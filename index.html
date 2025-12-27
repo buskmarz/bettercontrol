@@ -1003,6 +1003,7 @@ const inRange=(d,desde,hasta)=>{const x=new Date(d).getTime();return (!desde||x>
  ***************************/
 const AUTH_USER='better';
 const AUTH_PASS='nube';
+const REQUIRE_REMOTE_SYNC=true;
 
 const RemoteSync=(()=>{
   const ENDPOINT='/.netlify/functions/bmc-blobs';
@@ -1136,6 +1137,28 @@ const RemoteSync=(()=>{
   function patchStorage(){
     if(window.__bmcStoragePatched) return;
     window.__bmcStoragePatched=true;
+    try{
+      if(typeof Storage!=='undefined' && Storage.prototype && !Storage.prototype.__bmcPatched){
+        Storage.prototype.__bmcPatched=true;
+        const protoSet=Storage.prototype.setItem;
+        const protoRemove=Storage.prototype.removeItem;
+        const protoClear=Storage.prototype.clear;
+        Storage.prototype.setItem=function(key,value){
+          protoSet.call(this, key, value);
+          if(this===localStorage && !suppress && isSyncKey(key)) scheduleSync();
+        };
+        Storage.prototype.removeItem=function(key){
+          protoRemove.call(this, key);
+          if(this===localStorage && !suppress && isSyncKey(key)) scheduleSync();
+        };
+        Storage.prototype.clear=function(){
+          const keys=Object.keys(this);
+          protoClear.call(this);
+          if(this===localStorage && !suppress && keys.some(isSyncKey)) scheduleSync();
+        };
+        return;
+      }
+    }catch(_){}
     localStorage.setItem=(key,value)=>{ rawSet(key,value); if(!suppress && isSyncKey(key)) scheduleSync(); };
     localStorage.removeItem=(key)=>{ rawRemove(key); if(!suppress && isSyncKey(key)) scheduleSync(); };
     localStorage.clear=()=>{ const keys=Object.keys(localStorage); rawClear(); if(!suppress && keys.some(isSyncKey)) scheduleSync(); };
@@ -1146,6 +1169,9 @@ const RemoteSync=(()=>{
   return { init, setAuth, clearAuth, pullOrPush, scheduleSync, applyRemote, flushNow };
 })();
 RemoteSync.init();
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='hidden'){ RemoteSync.flushNow(); }
+});
 
 const Auth=(()=>{
   const TOKEN_KEY='bm_auth_token';
@@ -1172,18 +1198,16 @@ const Auth=(()=>{
     if(booting) return false;
     setError('');
     setStatus('Validando...');
-    if(user!==AUTH_USER || pass!==AUTH_PASS){
-      setStatus('');
-      setError('Credenciales invalidas');
-      return false;
-    }
     const token=btoa(`${user}:${pass}`);
     setToken(token);
     RemoteSync.setAuth(token);
     setStatus('Sincronizando...');
     booting=true;
     try{
-      await RemoteSync.pullOrPush();
+      const ok=await RemoteSync.pullOrPush();
+      if(!ok && REQUIRE_REMOTE_SYNC){
+        throw new Error('sync_unavailable');
+      }
       await bootApp();
       setOverlayVisible(false);
       setStatus('');
@@ -1193,7 +1217,15 @@ const Auth=(()=>{
         clearToken();
         RemoteSync.clearAuth();
         setStatus('');
-        setError('Acceso denegado');
+        setError('Credenciales invalidas');
+        setOverlayVisible(true);
+        return false;
+      }
+      if(REQUIRE_REMOTE_SYNC){
+        clearToken();
+        RemoteSync.clearAuth();
+        setStatus('');
+        setError('No se pudo conectar a Blobs. Reintenta.');
         setOverlayVisible(true);
         return false;
       }
@@ -1238,7 +1270,10 @@ const Auth=(()=>{
     RemoteSync.setAuth(token);
     setStatus('Sincronizando...');
     try{
-      await RemoteSync.pullOrPush();
+      const ok=await RemoteSync.pullOrPush();
+      if(!ok && REQUIRE_REMOTE_SYNC){
+        throw new Error('sync_unavailable');
+      }
       await bootApp();
       setOverlayVisible(false);
       setStatus('');
@@ -1246,6 +1281,11 @@ const Auth=(()=>{
       if(err && err.status===401){
         logout();
         setError('Acceso denegado');
+        return;
+      }
+      if(REQUIRE_REMOTE_SYNC){
+        logout();
+        setError('No se pudo conectar a Blobs. Reintenta.');
         return;
       }
       await bootApp();
