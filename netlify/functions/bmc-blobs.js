@@ -1,7 +1,7 @@
 const { getStore } = require("@netlify/blobs");
 
-const AUTH_USER = process.env.BMC_USER || "better";
-const AUTH_PASS = process.env.BMC_PASS || "nube";
+const AUTH_USER = process.env.BMC_USER || "";
+const AUTH_PASS = process.env.BMC_PASS || "";
 const STORE_NAME = "bmc-control";
 const STORE_KEY = "app-state";
 
@@ -18,6 +18,7 @@ function jsonResponse(statusCode, payload, extraHeaders) {
 }
 
 function isAuthorized(event) {
+  if (!AUTH_USER || !AUTH_PASS) return false;
   const header = event.headers?.authorization || event.headers?.Authorization || "";
   if (!header.startsWith("Basic ")) return false;
   let decoded = "";
