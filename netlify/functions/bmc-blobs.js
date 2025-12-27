@@ -17,6 +17,29 @@ function jsonResponse(statusCode, payload, extraHeaders) {
   };
 }
 
+function decodeBody(event) {
+  if (!event || event.body == null) return "";
+  if (typeof event.body !== "string") return event.body;
+  if (event.isBase64Encoded) {
+    try {
+      return Buffer.from(event.body, "base64").toString("utf8");
+    } catch (_) {
+      return "";
+    }
+  }
+  return event.body;
+}
+
+function parseJsonBody(event) {
+  const raw = decodeBody(event);
+  if (!raw) return {};
+  if (typeof raw === "object") return raw;
+  if (typeof raw !== "string") return {};
+  const trimmed = raw.trim();
+  if (!trimmed) return {};
+  return JSON.parse(trimmed);
+}
+
 function isAuthorized(event) {
   if (!AUTH_USER || !AUTH_PASS) return false;
   const header = event.headers?.authorization || event.headers?.Authorization || "";
@@ -32,6 +55,32 @@ function isAuthorized(event) {
   const user = decoded.slice(0, sep);
   const pass = decoded.slice(sep + 1);
   return user === AUTH_USER && pass === AUTH_PASS;
+}
+
+async function safeGetPayload(store) {
+  try {
+    return await store.get(STORE_KEY, { type: "json" });
+  } catch (_) {
+    try {
+      const text = await store.get(STORE_KEY, { type: "text" });
+      if (!text) return null;
+      if (typeof text === "object") return text;
+      const trimmed = String(text).trim();
+      if (!trimmed) return null;
+      return JSON.parse(trimmed);
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+async function safeSetPayload(store, payload) {
+  try {
+    await store.set(STORE_KEY, payload, { type: "json" });
+    return null;
+  } catch (err) {
+    return err;
+  }
 }
 
 function getStoreSafe() {
@@ -87,13 +136,16 @@ exports.handler = async (event) => {
   }
 
   if (event.httpMethod === "GET") {
-    const payload = await store.get(STORE_KEY, { type: "json" });
+    const payload = await safeGetPayload(store);
     if (!payload) {
       return jsonResponse(200, { ok: true, data: {}, updatedAt: 0 }, {
         "Access-Control-Allow-Origin": "*",
       });
     }
-    return jsonResponse(200, { ok: true, ...payload }, {
+    const safe = payload && typeof payload === "object" ? payload : {};
+    const data = safe.data && typeof safe.data === "object" ? safe.data : {};
+    const updatedAt = Number(safe.updatedAt || 0) || 0;
+    return jsonResponse(200, { ok: true, data, updatedAt }, {
       "Access-Control-Allow-Origin": "*",
     });
   }
@@ -101,16 +153,21 @@ exports.handler = async (event) => {
   if (event.httpMethod === "POST" || event.httpMethod === "PUT") {
     let body = {};
     try {
-      body = JSON.parse(event.body || "{}");
-    } catch (_) {
-      return jsonResponse(400, { ok: false, error: "invalid_json" }, {
+      body = parseJsonBody(event);
+    } catch (err) {
+      return jsonResponse(400, { ok: false, error: "invalid_json", detail: err.message }, {
         "Access-Control-Allow-Origin": "*",
       });
     }
     const data = body && typeof body.data === "object" ? body.data : {};
     const updatedAt = Number(body.updatedAt || 0) || Date.now();
     const payload = { data, updatedAt, savedAt: Date.now() };
-    await store.set(STORE_KEY, payload);
+    const writeErr = await safeSetPayload(store, payload);
+    if (writeErr) {
+      return jsonResponse(500, { ok: false, error: "store_write_failed", detail: writeErr.message }, {
+        "Access-Control-Allow-Origin": "*",
+      });
+    }
     return jsonResponse(200, { ok: true, updatedAt: payload.updatedAt }, {
       "Access-Control-Allow-Origin": "*",
     });
