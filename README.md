@@ -54,3 +54,9 @@ Pruebas sugeridas (criterios de aceptación)
 Requisitos
 - Para importadores: acceso a las librerías en CDN (`xlsx` y `pdfjs-dist`) o copias locales equivalentes.
 
+Netlify Blobs (sync remoto)
+- En el panel de Netlify: habilita Blobs para el sitio.
+- Variables de entorno recomendadas:
+  - `BMC_BLOBS_SITE_ID` y `BMC_BLOBS_TOKEN` (desde la seccion Blobs del sitio).
+  - `BMC_USER` y `BMC_PASS` si quieres cambiar credenciales.
+- El endpoint de sync es `/.netlify/functions/bmc-blobs` (debe responder 401 si esta vivo).
