@@ -1008,6 +1008,7 @@ const RemoteSync=(()=>{
   const KEY_PREFIX='bm_';
   const SKIP_PREFIXES=['bm_auth_','bm_remote_'];
   const LOCAL_STAMP_KEY='bm_remote_local_stamp';
+  const SYNC_POLL_MS=5000;
   const rawGet=localStorage.getItem.bind(localStorage);
   const rawSet=localStorage.setItem.bind(localStorage);
   const rawRemove=localStorage.removeItem.bind(localStorage);
@@ -1017,6 +1018,8 @@ const RemoteSync=(()=>{
   let syncTimer=null;
   let syncing=false;
   let pending=false;
+  let pollTimer=null;
+  let lastPollAt=0;
 
   function isSyncKey(key){
     if(!key || !key.startsWith(KEY_PREFIX)) return false;
@@ -1103,17 +1106,25 @@ const RemoteSync=(()=>{
     }
     const remoteUpdated=Number(remote.updatedAt||0);
     const localStamp=getLocalStamp();
+    const localData=collectLocal();
+    const remoteData=remote && typeof remote.data==='object' ? remote.data : {};
     if(remoteUpdated>localStamp){
-      applyRemote(remote.data||{});
-      setLocalStamp(remoteUpdated);
+      applyRemote(remoteData||{});
+      setLocalStamp(remoteUpdated || Date.now());
       updateBadge('Sync: listo','ok');
       return true;
     }
-    if(remoteUpdated===0 && Object.keys(remote.data||{}).length===0 && Object.keys(collectLocal()).length===0){
+    if(remoteUpdated===0 && Object.keys(remoteData||{}).length===0 && Object.keys(localData).length===0){
       updateBadge('Sync: listo','ok');
       return true;
     }
     if(localStamp>=remoteUpdated){
+      if(Object.keys(localData).length===0 && Object.keys(remoteData||{}).length>0){
+        applyRemote(remoteData||{});
+        setLocalStamp(remoteUpdated || Date.now());
+        updateBadge('Sync: listo','ok');
+        return true;
+      }
       await pushLocal(localStamp||Date.now());
     } else {
       updateBadge('Sync: listo','ok');
@@ -1131,6 +1142,21 @@ const RemoteSync=(()=>{
   async function flushNow(){
     if(!authToken) return false;
     return pushLocal(Date.now());
+  }
+  function startPolling(){
+    if(pollTimer) return;
+    pollTimer=setInterval(()=>{
+      if(!authToken || syncing || suppress) return;
+      const now=Date.now();
+      if(now-lastPollAt<1500) return;
+      lastPollAt=now;
+      pullOrPush().catch(()=>{});
+    }, SYNC_POLL_MS);
+  }
+  function stopPolling(){
+    if(!pollTimer) return;
+    clearInterval(pollTimer);
+    pollTimer=null;
   }
   function patchStorage(){
     if(window.__bmcStoragePatched) return;
@@ -1162,14 +1188,28 @@ const RemoteSync=(()=>{
     localStorage.clear=()=>{ const keys=Object.keys(localStorage); rawClear(); if(!suppress && keys.some(isSyncKey)) scheduleSync(); };
   }
   function init(){ patchStorage(); updateBadge('Sync: local',''); }
-  function setAuth(token){ authToken=token||''; if(!authToken){ updateBadge('Sync: local',''); } }
-  function clearAuth(){ authToken=''; updateBadge('Sync: local',''); }
+  function setAuth(token){
+    authToken=token||'';
+    if(!authToken){
+      updateBadge('Sync: local','');
+      stopPolling();
+      return;
+    }
+    startPolling();
+  }
+  function clearAuth(){
+    authToken='';
+    updateBadge('Sync: local','');
+    stopPolling();
+  }
   return { init, setAuth, clearAuth, pullOrPush, scheduleSync, applyRemote, flushNow };
 })();
 RemoteSync.init();
 document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState==='hidden'){ RemoteSync.flushNow(); }
+  if(document.visibilityState==='visible'){ RemoteSync.pullOrPush().catch(()=>{}); }
 });
+window.addEventListener('focus', ()=>{ RemoteSync.pullOrPush().catch(()=>{}); });
 
 const Auth=(()=>{
   const TOKEN_KEY='bm_auth_token';
