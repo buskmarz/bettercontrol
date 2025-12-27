@@ -33,6 +33,27 @@ function isAuthorized(event) {
   return user === AUTH_USER && pass === AUTH_PASS;
 }
 
+function getStoreSafe() {
+  const siteID =
+    process.env.BMC_BLOBS_SITE_ID ||
+    process.env.NETLIFY_BLOBS_SITE_ID ||
+    process.env.NETLIFY_SITE_ID ||
+    "";
+  const token =
+    process.env.BMC_BLOBS_TOKEN ||
+    process.env.NETLIFY_BLOBS_TOKEN ||
+    "";
+  const opts = siteID && token ? { siteID, token } : null;
+  try {
+    return opts ? getStore(STORE_NAME, opts) : getStore(STORE_NAME);
+  } catch (err) {
+    if (opts) {
+      return getStore({ name: STORE_NAME, ...opts });
+    }
+    throw err;
+  }
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod === "OPTIONS") {
     return {
@@ -53,7 +74,16 @@ exports.handler = async (event) => {
     });
   }
 
-  const store = getStore(STORE_NAME);
+  let store;
+  try {
+    store = getStoreSafe();
+  } catch (err) {
+    const name = err && err.name ? err.name : "blobs_error";
+    const detail = err && err.message ? err.message : "Blobs not configured";
+    return jsonResponse(500, { ok: false, error: name, detail }, {
+      "Access-Control-Allow-Origin": "*",
+    });
+  }
 
   if (event.httpMethod === "GET") {
     const payload = await store.get(STORE_KEY, { type: "json" });
