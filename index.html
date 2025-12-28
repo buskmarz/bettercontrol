@@ -1158,6 +1158,24 @@ const RemoteSync=(()=>{
     const remoteData=remote && typeof remote.data==='object' ? remote.data : {};
     const remoteHasData=Object.keys(remoteData||{}).length>0;
     const dirty=isDirty();
+    if(!remoteHasData){
+      const localHasData=Object.keys(localStorage).some(isSyncKey);
+      if(localHasData){
+        const localData=collectLocal();
+        // Bootstrap remote when it is empty but local already has data.
+        try{
+          updateBadge('Sync: guardando','warn');
+          const payload=await request('POST', {data: localData});
+          if(payload.updatedAt){ setLocalStamp(payload.updatedAt); }
+          clearDirty();
+          updateBadge('Sync: listo','ok');
+          return true;
+        }catch(err){
+          updateBadge(err.status===401? 'Sync: auth':'Sync: offline', err.status===401? 'err':'warn');
+          return false;
+        }
+      }
+    }
     const legacyRemote=remoteUpdated===0 && remoteHasData && localStamp===0;
     if(remoteUpdated>localStamp || legacyRemote){
       if(dirty){
