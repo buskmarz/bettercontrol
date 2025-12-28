@@ -1007,7 +1007,10 @@ const RemoteSync=(()=>{
   const ENDPOINT='/.netlify/functions/bmc-blobs';
   const KEY_PREFIX='bm_';
   const SKIP_PREFIXES=['bm_auth_','bm_remote_'];
-  const LOCAL_STAMP_KEY='bm_remote_local_stamp';
+  const LEGACY_STAMP_KEY='bm_remote_local_stamp';
+  const LOCAL_STAMP_KEY='bm_remote_last_sync';
+  const DIRTY_KEY='bm_remote_dirty';
+  const DIRTY_KEYS_KEY='bm_remote_dirty_keys';
   const SYNC_POLL_MS=5000;
   const rawGet=localStorage.getItem.bind(localStorage);
   const rawSet=localStorage.setItem.bind(localStorage);
@@ -1032,8 +1035,55 @@ const RemoteSync=(()=>{
     el.classList.remove('ok','warn','err');
     if(tone) el.classList.add(tone);
   }
-  function setLocalStamp(ts){ rawSet(LOCAL_STAMP_KEY, String(ts||0)); }
-  function getLocalStamp(){ return Number(rawGet(LOCAL_STAMP_KEY)||0); }
+  function setLocalStamp(ts){
+    rawSet(LOCAL_STAMP_KEY, String(ts||0));
+    if(rawGet(LEGACY_STAMP_KEY)) rawRemove(LEGACY_STAMP_KEY);
+  }
+  function getLocalStamp(){
+    const primary=Number(rawGet(LOCAL_STAMP_KEY)||0);
+    if(primary) return primary;
+    const legacy=Number(rawGet(LEGACY_STAMP_KEY)||0);
+    if(legacy) return legacy;
+    return 0;
+  }
+  function isDirty(){ return rawGet(DIRTY_KEY)==='1'; }
+  function setDirty(flag){ if(flag) rawSet(DIRTY_KEY,'1'); else rawRemove(DIRTY_KEY); }
+  function getDirtyKeys(){
+    try{ return new Set(JSON.parse(rawGet(DIRTY_KEYS_KEY)||'[]')); }catch(_){ return new Set(); }
+  }
+  function setDirtyKeys(keys){ rawSet(DIRTY_KEYS_KEY, JSON.stringify([...keys])); }
+  function markDirtyKey(key){
+    if(!isSyncKey(key)) return;
+    const keys=getDirtyKeys();
+    keys.add(key);
+    setDirtyKeys(keys);
+    setDirty(true);
+  }
+  function clearDirty(){
+    rawRemove(DIRTY_KEY);
+    rawRemove(DIRTY_KEYS_KEY);
+  }
+  function snapshotDirty(keys){
+    const snapshot={};
+    keys.forEach((key)=>{ snapshot[key]=rawGet(key); });
+    return snapshot;
+  }
+  function restoreSnapshot(snapshot){
+    Object.entries(snapshot).forEach(([key,value])=>{
+      if(value==null){ rawRemove(key); }
+      else { rawSet(key, value); }
+    });
+  }
+  let refreshTimer=null;
+  function scheduleRefresh(){
+    if(typeof renderAll!=='function') return;
+    if(document?.body?.classList.contains('auth-locked')) return;
+    if(refreshTimer) cancelAnimationFrame(refreshTimer);
+    refreshTimer=requestAnimationFrame(()=>{
+      refreshTimer=null;
+      renderAll();
+    });
+  }
   function collectLocal(){
     const data={};
     Object.keys(localStorage).forEach((key)=>{
@@ -1071,15 +1121,14 @@ const RemoteSync=(()=>{
     }
     return payload;
   }
-  async function pushLocal(forcedStamp){
+  async function pushLocal(){
     if(syncing){ pending=true; return false; }
     syncing=true;
-    const stamp=forcedStamp||Date.now();
-    setLocalStamp(stamp);
     updateBadge('Sync: guardando','warn');
     try{
-      const payload=await request('POST', {data: collectLocal(), updatedAt: stamp});
+      const payload=await request('POST', {data: collectLocal()});
       if(payload.updatedAt){ setLocalStamp(payload.updatedAt); }
+      clearDirty();
       updateBadge('Sync: listo','ok');
       return true;
     }catch(err){
@@ -1104,44 +1153,54 @@ const RemoteSync=(()=>{
       updateBadge('Sync: offline','warn');
       return false;
     }
-    const remoteUpdated=Number(remote.updatedAt||0);
+    const remoteUpdated=Number(remote.updatedAt||0) || 0;
     const localStamp=getLocalStamp();
-    const localData=collectLocal();
     const remoteData=remote && typeof remote.data==='object' ? remote.data : {};
-    if(remoteUpdated>localStamp){
-      applyRemote(remoteData||{});
-      setLocalStamp(remoteUpdated || Date.now());
-      updateBadge('Sync: listo','ok');
-      return true;
-    }
-    if(remoteUpdated===0 && Object.keys(remoteData||{}).length===0 && Object.keys(localData).length===0){
-      updateBadge('Sync: listo','ok');
-      return true;
-    }
-    if(localStamp>=remoteUpdated){
-      if(Object.keys(localData).length===0 && Object.keys(remoteData||{}).length>0){
+    const remoteHasData=Object.keys(remoteData||{}).length>0;
+    const dirty=isDirty();
+    const legacyRemote=remoteUpdated===0 && remoteHasData && localStamp===0;
+    if(remoteUpdated>localStamp || legacyRemote){
+      if(dirty){
+        const dirtyKeys=getDirtyKeys();
+        const snapshot=snapshotDirty(dirtyKeys);
         applyRemote(remoteData||{});
+        restoreSnapshot(snapshot);
         setLocalStamp(remoteUpdated || Date.now());
-        updateBadge('Sync: listo','ok');
+        updateBadge('Sync: combinado','warn');
+        scheduleSync();
+        scheduleRefresh();
         return true;
       }
-      await pushLocal(localStamp||Date.now());
-    } else {
+      applyRemote(remoteData||{});
+      setLocalStamp(remoteUpdated || Date.now());
+      clearDirty();
       updateBadge('Sync: listo','ok');
+      scheduleRefresh();
+      return true;
     }
+    if(dirty){
+      await pushLocal();
+      return true;
+    }
+    updateBadge('Sync: listo','ok');
     return true;
   }
-  function scheduleSync(){
+  function scheduleSync(keys){
     if(!authToken || suppress) return;
-    const stamp=Date.now();
-    setLocalStamp(stamp);
+    if(Array.isArray(keys)){
+      keys.forEach(markDirtyKey);
+    } else if(typeof keys==='string'){
+      markDirtyKey(keys);
+    } else if(!isDirty()){
+      setDirty(true);
+    }
     updateBadge('Sync: guardando','warn');
     if(syncTimer) clearTimeout(syncTimer);
-    syncTimer=setTimeout(()=>{ pushLocal(stamp); }, 1200);
+    syncTimer=setTimeout(()=>{ pushLocal(); }, 1200);
   }
   async function flushNow(){
     if(!authToken) return false;
-    return pushLocal(Date.now());
+    return pushLocal();
   }
   function startPolling(){
     if(pollTimer) return;
@@ -1169,23 +1228,23 @@ const RemoteSync=(()=>{
         const protoClear=Storage.prototype.clear;
         Storage.prototype.setItem=function(key,value){
           protoSet.call(this, key, value);
-          if(this===localStorage && !suppress && isSyncKey(key)) scheduleSync();
+          if(this===localStorage && !suppress && isSyncKey(key)) scheduleSync(key);
         };
         Storage.prototype.removeItem=function(key){
           protoRemove.call(this, key);
-          if(this===localStorage && !suppress && isSyncKey(key)) scheduleSync();
+          if(this===localStorage && !suppress && isSyncKey(key)) scheduleSync(key);
         };
         Storage.prototype.clear=function(){
           const keys=Object.keys(this);
           protoClear.call(this);
-          if(this===localStorage && !suppress && keys.some(isSyncKey)) scheduleSync();
+          if(this===localStorage && !suppress && keys.some(isSyncKey)) scheduleSync(keys.filter(isSyncKey));
         };
         return;
       }
     }catch(_){}
-    localStorage.setItem=(key,value)=>{ rawSet(key,value); if(!suppress && isSyncKey(key)) scheduleSync(); };
-    localStorage.removeItem=(key)=>{ rawRemove(key); if(!suppress && isSyncKey(key)) scheduleSync(); };
-    localStorage.clear=()=>{ const keys=Object.keys(localStorage); rawClear(); if(!suppress && keys.some(isSyncKey)) scheduleSync(); };
+    localStorage.setItem=(key,value)=>{ rawSet(key,value); if(!suppress && isSyncKey(key)) scheduleSync(key); };
+    localStorage.removeItem=(key)=>{ rawRemove(key); if(!suppress && isSyncKey(key)) scheduleSync(key); };
+    localStorage.clear=()=>{ const keys=Object.keys(localStorage); rawClear(); if(!suppress && keys.some(isSyncKey)) scheduleSync(keys.filter(isSyncKey)); };
   }
   function init(){ patchStorage(); updateBadge('Sync: local',''); }
   function setAuth(token){
