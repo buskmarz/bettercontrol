@@ -145,7 +145,8 @@ exports.handler = async (event) => {
     const safe = payload && typeof payload === "object" ? payload : {};
     const data = safe.data && typeof safe.data === "object" ? safe.data : {};
     const updatedAt = Number(safe.updatedAt || 0) || 0;
-    return jsonResponse(200, { ok: true, data, updatedAt }, {
+    const savedAt = Number(safe.savedAt || 0) || 0;
+    return jsonResponse(200, { ok: true, data, updatedAt, savedAt }, {
       "Access-Control-Allow-Origin": "*",
     });
   }
@@ -160,15 +161,15 @@ exports.handler = async (event) => {
       });
     }
     const data = body && typeof body.data === "object" ? body.data : {};
-    const updatedAt = Number(body.updatedAt || 0) || Date.now();
-    const payload = { data, updatedAt, savedAt: Date.now() };
+    const now = Date.now();
+    const payload = { data, updatedAt: now, savedAt: now };
     const writeErr = await safeSetPayload(store, payload);
     if (writeErr) {
       return jsonResponse(500, { ok: false, error: "store_write_failed", detail: writeErr.message }, {
         "Access-Control-Allow-Origin": "*",
       });
     }
-    return jsonResponse(200, { ok: true, updatedAt: payload.updatedAt }, {
+    return jsonResponse(200, { ok: true, updatedAt: payload.updatedAt, savedAt: payload.savedAt }, {
       "Access-Control-Allow-Origin": "*",
     });
   }
