@@ -58,25 +58,36 @@ function isAuthorized(event) {
 }
 
 async function safeGetPayload(store) {
+  let raw;
   try {
-    return await store.get(STORE_KEY, { type: "json" });
+    raw = await store.get(STORE_KEY, { type: "text" });
   } catch (_) {
     try {
-      const text = await store.get(STORE_KEY, { type: "text" });
-      if (!text) return null;
-      if (typeof text === "object") return text;
-      const trimmed = String(text).trim();
-      if (!trimmed) return null;
-      return JSON.parse(trimmed);
+      raw = await store.get(STORE_KEY);
     } catch (_) {
       return null;
     }
   }
+  if (!raw) return null;
+  if (typeof raw === "object") return raw;
+  const trimmed = String(raw).trim();
+  if (!trimmed || trimmed === "[object Object]") return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch (_) {
+    return null;
+  }
 }
 
 async function safeSetPayload(store, payload) {
+  let serialized = "";
   try {
-    await store.set(STORE_KEY, payload, { type: "json" });
+    serialized = JSON.stringify(payload);
+  } catch (err) {
+    return err;
+  }
+  try {
+    await store.set(STORE_KEY, serialized);
     return null;
   } catch (err) {
     return err;
