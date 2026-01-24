@@ -740,6 +740,7 @@ body.light-mode #panel-dashboard canvas{background:#FFFFFF;border:1px solid #e5e
       </div>
       <div class="toolbar">
         <button class="btn primary" onclick="recetas.nueva()">Nueva receta</button>
+        <button class="btn" onclick="importMenuFromPhotos()">Importar menú (foto)</button>
         <label class="grow">Buscar receta<input id="rc-buscar" placeholder="Nombre, palabra clave…"></label>
         <label>Filtro<select id="rc-filtro"><option value="all">Todas</option><option value="bajo">Bajo margen</option><option value="sin-precio">Sin precio</option><option value="sin-costo">Sin costo</option><option value="sin-categoria">Sin categoría</option></select></label>
         <label>Ordenar<select id="rc-sort"><option value="nombre">Nombre</option><option value="margen">Margen real</option><option value="costo">Costo/porción</option><option value="precio">Precio sugerido</option></select></label>
@@ -994,7 +995,7 @@ body.light-mode #panel-dashboard canvas{background:#FFFFFF;border:1px solid #e5e
     <div class="card">
       <h3>Recetas</h3>
       <div class="table-scroll">
-        <table class="table" id="tbl-recetas"><thead><tr><th>Nombre</th><th>Categoría</th><th>Porciones</th><th>Insumos/porción</th><th>ABC/porción</th><th>Costo/porción</th><th>Precio sugerido</th><th>Margen real</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+        <table class="table" id="tbl-recetas"><thead><tr><th>Nombre</th><th>Categoría</th><th>Porciones</th><th>Insumos/porción</th><th>ABC/porción</th><th>Costo/porción</th><th>Precio venta</th><th>Precio sugerido</th><th>Margen real</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
     <div class="card">
@@ -2484,6 +2485,166 @@ function seedEjemplo(){
   renderAll();
 }
 
+function normalizeName(val){
+  return String(val||'')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .replace(/[^a-z0-9]+/g,' ')
+    .trim();
+}
+
+function importMenuFromPhotos(){
+  const baseCat={
+    creaciones:'Bebidas · Creaciones',
+    mood:'Bebidas · Mood Trips',
+    clasicos:'Bebidas · Clásicos',
+    essentials:'Bebidas · Essentials',
+    embotellados:'Bebidas · Embotellados',
+    basicos:'Alimentos · Básicos',
+    sandwiches:'Alimentos · Sandwiches',
+    croissants:'Alimentos · Croissants',
+    dulce:'Alimentos · Algo dulce',
+    postres:'Alimentos · Postres'
+  };
+  const sized=(nombre, precio360, precio480, categoria, notas='')=>[
+    {nombre:`${nombre} 360ml`, precio:precio360, categoria, notas: notas? `${notas} · Tamaño 360ml.`:'Tamaño 360ml.'},
+    {nombre:`${nombre} 480ml`, precio:precio480, categoria, notas: notas? `${notas} · Tamaño 480ml.`:'Tamaño 480ml.'}
+  ];
+  const items=[
+    // Creaciones
+    {nombre:'Nirvana Lavanda', precio:95, categoria:baseCat.creaciones, notas:'Soda italiana de lavanda, limón, CBD calming.'},
+    {nombre:"Dragon's Blood", precio:95, categoria:baseCat.creaciones, notas:'Soda italiana de mango y fresa con CBD calming.'},
+    {nombre:'Latte Cocochata', precio:90, categoria:baseCat.creaciones, notas:'Latte con horchata y un toque de coco.'},
+    {nombre:'Cold Berry Days', precio:95, categoria:baseCat.creaciones, notas:'Macerado de berries con ginger ale, CBD calming y gummie de berries.'},
+    {nombre:'Tango Zen', precio:95, categoria:baseCat.creaciones, notas:'Soda italiana mango maracuyá con CBD calming.'},
+    {nombre:'Matcha Cocochata', precio:95, categoria:baseCat.creaciones, notas:'Matcha latte con horchata y un toque de coco.'},
+    {nombre:'Matcha Tropic', precio:95, categoria:baseCat.creaciones, notas:'Fresa o mango macerado, leche de almendra, miel de agave, matcha y CBD wellness.'},
+    // Mood Trips
+    {nombre:'Spaceman', precio:150, categoria:baseCat.mood, notas:'Lavanda, limón, agua mineral, HHC purple stuff syrup.'},
+    {nombre:'Sweet Trip', precio:150, categoria:baseCat.mood, notas:'Berries, perlas de fresa, agua mineral, strawberry gelato magic mushroom.'},
+    // Clásicos de café
+    {nombre:'Americano', precio:55, categoria:baseCat.clasicos},
+    {nombre:'Cappuccino', precio:70, categoria:baseCat.clasicos},
+    {nombre:'Espresso', precio:45, categoria:baseCat.clasicos},
+    {nombre:'Espresso cortado', precio:50, categoria:baseCat.clasicos},
+    {nombre:'Flat white', precio:60, categoria:baseCat.clasicos},
+    {nombre:'Cold brew', precio:60, categoria:baseCat.clasicos},
+    {nombre:'Cold brew tonic', precio:75, categoria:baseCat.clasicos},
+    {nombre:'Mocha', precio:75, categoria:baseCat.clasicos},
+    {nombre:'Affogato', precio:70, categoria:baseCat.clasicos},
+    {nombre:'Café filtrado', precio:65, categoria:baseCat.clasicos, notas:'V60, Aeropress, prensa francesa.'},
+    // Essentials (360ml / 480ml)
+    {nombre:'Matcha ceremonial', precio:85, categoria:baseCat.essentials, notas:'Tamaño 360ml/480ml.'},
+    ...sized('Matcha latte', 75, 85, baseCat.essentials),
+    ...sized('Taro latte', 75, 85, baseCat.essentials),
+    ...sized('Chai latte', 75, 85, baseCat.essentials),
+    ...sized('Dirty chai', 85, 95, baseCat.essentials),
+    ...sized('Golden milk', 75, 85, baseCat.essentials),
+    ...sized('Chocolate', 75, 85, baseCat.essentials),
+    ...sized('Latte', 65, 75, baseCat.essentials, 'Lavanda, caramelo, horchata, vainilla, pistache, pumpkin (+10).'),
+    ...sized('Tisana', 65, 75, baseCat.essentials, 'Frutos rojos, frutos dorados.'),
+    ...sized('Té', 65, 75, baseCat.essentials, 'Lavanda-manzanilla, bugambilia-canela.'),
+    ...sized('Soda italiana', 65, 75, baseCat.essentials, 'Lavanda, maracuyá, mango, fresa, manzana verde, mix berries.'),
+    // Embotellados
+    {nombre:'Topo chico', precio:35, categoria:baseCat.embotellados},
+    {nombre:'Coca Cola', precio:30, categoria:baseCat.embotellados},
+    {nombre:'Agua natural', precio:25, categoria:baseCat.embotellados},
+    // Básicos
+    {nombre:'Chilaquiles', precio:85, categoria:baseCat.basicos, notas:'Verdes o rojos, con pollo, queso, crema y aguacate.'},
+    {nombre:'Molletes', precio:85, categoria:baseCat.basicos, notas:'6 piezas, tocino, pepperoni, jamón serrano, jamón de pavo.'},
+    {nombre:'Avo toast', precio:75, categoria:baseCat.basicos, notas:'Aguacate, cherry, aceite de oliva, sal y pimienta. Agrega tocino +25.'},
+    {nombre:'Ensalada ibérica', precio:80, categoria:baseCat.basicos, notas:'Jamón serrano, mix de lechugas, queso de cabra, cherry, aceitunas negras, aceite de cacahuate.'},
+    {nombre:'Bowl de frutas', precio:70, categoria:baseCat.basicos, notas:'Plátano, melón, manzana, fresa, granola y miel de agave.'},
+    {nombre:'Globo de taro', precio:70, categoria:baseCat.basicos, notas:'Yogurt griego, taro, manzana, arándano, granola y miel de agave.'},
+    {nombre:'Munchie chips', precio:70, categoria:baseCat.basicos, notas:'Papas fritas con salsa de la casa.'},
+    // Algo dulce
+    {nombre:'Waffles con frutos rojos', precio:95, categoria:baseCat.dulce, notas:'Nutella, fresas y coco.'},
+    {nombre:'Croissant de Nutella', precio:80, categoria:baseCat.dulce, notas:'Nutella, fresas, almendra y coco.'},
+    // Sandwiches (acompañado de chips)
+    {nombre:'Club sándwich', precio:160, categoria:baseCat.sandwiches, notas:'Pollo, jamón, tocino, mix de quesos, cherry, mix de lechuga, aguacate, mayonesa. Acompañado de chips.'},
+    {nombre:'Roast beef', precio:110, categoria:baseCat.sandwiches, notas:'Roast beef, mayonesa, cebolla caramelizada, mix de quesos. Acompañado de chips.'},
+    {nombre:'El vasco', precio:110, categoria:baseCat.sandwiches, notas:'Jamón serrano, pesto, jalea de higo. Acompañado de chips.'},
+    {nombre:'Smoked turkey', precio:110, categoria:baseCat.sandwiches, notas:'Jamón de pavo, mayonesa, cherry, mix de lechugas, mix de quesos. Acompañado de chips.'},
+    // Croissants (acompañado de chips)
+    {nombre:'El ibérico', precio:110, categoria:baseCat.croissants, notas:'Jamón serrano, pesto, queso de cabra, mix de lechugas, aceitunas negras. Acompañado de chips.'},
+    {nombre:'Golden', precio:110, categoria:baseCat.croissants, notas:'Jamón de pavo, mix de quesos, manzana, miel de agave. Acompañado de chips.'},
+    // Postres by Panela
+    {nombre:'Pasteles', precio:115, categoria:baseCat.postres, notas:'Nutella, conejito, Ferrero, Red Velvet, zanahoria, lotus, Baileys, confeti, coco, tiramisú.'},
+    {nombre:'Cheesecake', precio:120, categoria:baseCat.postres, notas:'Base de galleta, con crema de Lotus.'},
+    {nombre:'Brownies', precio:60, categoria:baseCat.postres, notas:'+20 con helado.'},
+    {nombre:'Enjambre', precio:35, categoria:baseCat.postres, notas:'Hojuelas de cereal, cubiertas con chocolate con leche o amargo.'},
+    {nombre:'Trufas', precio:35, categoria:baseCat.postres, notas:'3 piezas de chocolate con leche, amargo y blanco.'},
+    {nombre:'Panqué de temporada', precio:45, categoria:baseCat.postres},
+    {nombre:'Tortuga de chocolate', precio:35, categoria:baseCat.postres, notas:'Oreo, pretzel, nuez o almendra.'}
+  ];
+
+  const additions=[
+    {nombre:'Leche vegetal', precio:15, tipo:'Leche'},
+    {nombre:'Perlas explosivas fresa', precio:15, tipo:'Topping'},
+    {nombre:'Shot de jarabe', precio:15, tipo:'Jarabe'},
+    {nombre:'CBD', precio:42, tipo:'CBD'},
+    {nombre:'Adaptógenos', precio:42, tipo:'Adaptógeno'},
+    {nombre:'Gomitas CBD', precio:83, tipo:'CBD'},
+    {nombre:'Gomitas HHC, D9', precio:125, tipo:'Extra'},
+    {nombre:'Jarabes mágicos', precio:83, tipo:'Jarabe'}
+  ];
+
+  const existing=Data.get(Data.col.recetas)||[];
+  const map=new Map(existing.map(r=>[normalizeName(r.nombre), r]));
+  let created=0, updated=0;
+  items.forEach(it=>{
+    const key=normalizeName(it.nombre);
+    const found=map.get(key);
+    if(!found){
+      Data.add(Data.col.recetas,{
+        nombre:it.nombre,
+        categoria:it.categoria||'',
+        precioVenta:Number(it.precio||0),
+        margenObj:Number(cfg.margen||60),
+        porciones:1,
+        tiempoPrepMin:0,
+        precioSugerido:0,
+        notas:it.notas||''
+      });
+      created++;
+    } else {
+      const patch={};
+      if((!found.categoria || !String(found.categoria).trim()) && it.categoria) patch.categoria=it.categoria;
+      if((!Number(found.precioVenta||0)) && Number(it.precio||0)) patch.precioVenta=Number(it.precio||0);
+      if((!found.notas || !String(found.notas).trim()) && it.notas) patch.notas=it.notas;
+      if(Object.keys(patch).length){ Data.upd(Data.col.recetas, found.id, patch); updated++; }
+    }
+  });
+
+  const existingAdds=Data.get(Data.col.adiciones)||[];
+  const mapAdd=new Map(existingAdds.map(a=>[normalizeName(a.nombre), a]));
+  let addCreated=0, addUpdated=0;
+  additions.forEach(a=>{
+    const key=normalizeName(a.nombre);
+    const found=mapAdd.get(key);
+    if(!found){
+      Data.add(Data.col.adiciones,{
+        nombre:a.nombre,
+        tipo:a.tipo||'Extra',
+        costoExtra:0,
+        precioExtra:Number(a.precio||0),
+        margenObj:Number(cfg.margen||60)
+      });
+      addCreated++;
+    } else {
+      const patch={};
+      if((!found.tipo || !String(found.tipo).trim()) && a.tipo) patch.tipo=a.tipo;
+      if((!Number(found.precioExtra||0)) && Number(a.precio||0)) patch.precioExtra=Number(a.precio||0);
+      if(found.margenObj==null) patch.margenObj=Number(cfg.margen||60);
+      if(Object.keys(patch).length){ Data.upd(Data.col.adiciones, found.id, patch); addUpdated++; }
+    }
+  });
+
+  notify(`Menú importado: ${created} productos, ${updated} actualizados. Adiciones: ${addCreated} nuevas, ${addUpdated} actualizadas.`, 'success');
+  renderRecetas();
+}
+
 /****************
  * BMC: Ventas  *
  ****************/
@@ -2717,6 +2878,7 @@ const recetas={
       <div class="row">
         <label class="grow">Categoría<input id="r-cat" list="receta-cat-list" placeholder="Café caliente, Smoothie, Alimentos"></label>
         <label>Margen objetivo %<input type="number" id="r-margen" value="60" step="0.01"></label>
+        <label>Precio venta<input type="number" id="r-precio" value="" step="0.01" min="0" placeholder="0.00"></label>
       </div>
       <datalist id="receta-cat-list">
         <option value="Café caliente"></option>
@@ -2725,6 +2887,17 @@ const recetas={
         <option value="Alimentos"></option>
         <option value="Panadería"></option>
         <option value="Funcional"></option>
+        <option value="Bebidas · Creaciones"></option>
+        <option value="Bebidas · Mood Trips"></option>
+        <option value="Bebidas · Clásicos"></option>
+        <option value="Bebidas · Essentials"></option>
+        <option value="Bebidas · Embotellados"></option>
+        <option value="Alimentos · Básicos"></option>
+        <option value="Alimentos · Sandwiches"></option>
+        <option value="Alimentos · Croissants"></option>
+        <option value="Alimentos · Algo dulce"></option>
+        <option value="Alimentos · Postres"></option>
+        <option value="Adiciones"></option>
         <option value="Otros"></option>
       </datalist>
       <div class="card"><h3>Ingredientes</h3>
@@ -2777,6 +2950,7 @@ const recetas={
       porciones:Number(document.getElementById('r-porc').value||1),
       tiempoPrepMin:Number(document.getElementById('r-tprep').value||0),
       margenObj:Number(document.getElementById('r-margen').value||60),
+      precioVenta:Number(document.getElementById('r-precio')?.value||0),
       precioSugerido:0,
       notas:''
     };
@@ -2803,6 +2977,7 @@ const recetas={
       <div class="row">
         <label class="grow">Categoría<input id="r-cat" list="receta-cat-list" value="${r.categoria||''}" placeholder="Café caliente, Smoothie, Alimentos"></label>
         <label>Margen objetivo %<input type="number" id="r-margen" value="${r.margenObj||60}" step="0.01"></label>
+        <label>Precio venta<input type="number" id="r-precio" value="${r.precioVenta??''}" step="0.01" min="0" placeholder="0.00"></label>
       </div>
       <datalist id="receta-cat-list">
         <option value="Café caliente"></option>
@@ -2811,6 +2986,17 @@ const recetas={
         <option value="Alimentos"></option>
         <option value="Panadería"></option>
         <option value="Funcional"></option>
+        <option value="Bebidas · Creaciones"></option>
+        <option value="Bebidas · Mood Trips"></option>
+        <option value="Bebidas · Clásicos"></option>
+        <option value="Bebidas · Essentials"></option>
+        <option value="Bebidas · Embotellados"></option>
+        <option value="Alimentos · Básicos"></option>
+        <option value="Alimentos · Sandwiches"></option>
+        <option value="Alimentos · Croissants"></option>
+        <option value="Alimentos · Algo dulce"></option>
+        <option value="Alimentos · Postres"></option>
+        <option value="Adiciones"></option>
         <option value="Otros"></option>
       </datalist>
       <div class="card"><h3>Ingredientes</h3>
@@ -3424,6 +3610,7 @@ const catalogos={
     // Columnas por colección (evitar editar id)
     let cols = Object.keys(rows[0]||{nombre:'Nombre'}).filter(k=> k!=='id');
     if(col==='empleados'){ cols=['nombre','rol','sueldoHora','agradecimiento']; rows.forEach(r=>{ const patch={}; if(r.sueldoHora==null) patch.sueldoHora=0; if(r.agradecimiento==null) patch.agradecimiento='Gracias por tu trabajo esta semana.'; if(Object.keys(patch).length) Data.upd(Data.col[col], r.id, patch); }); }
+    if(col==='recetas'){ cols=['nombre','categoria','precioVenta','precioSugerido','margenObj','porciones','tiempoPrepMin','notas']; }
     el.innerHTML=`<h3>${map[col]||col}</h3>
       <div class='toolbar'><button class='btn' onclick="catalogos.nuevo('${col}')">Nuevo</button> <button class='btn ghost' onclick="document.getElementById('catalogo-modal').classList.add('hidden')">Cerrar</button></div>
       <table class='table'><thead><tr>${cols.map(k=>`<th>${k}</th>`).join('')}<th>Horario</th><th></th></tr></thead>
@@ -5416,10 +5603,12 @@ function calcRecetaMetrics(r){
   const mp=Number(r.mpPorcion||0);
   const abcP=Number(r.abcPorcion||0);
   const costoBase=Number(r.costoPorcion!=null? r.costoPorcion : (mp+abcP));
-  const precio=Number(r.precioSugerido||0);
+  const precioVenta=Number(r.precioVenta||0);
+  const precioSug=Number(r.precioSugerido||0);
+  const precio=precioVenta>0? precioVenta : precioSug;
   const margenReal=precio>0? ((precio-costoBase)/precio*100):0;
   const margenObj=Number(r.margenObj||cfg.margen||0);
-  return {costo:costoBase, precio, margenReal, margenObj};
+  return {costo:costoBase, precio, precioVenta, precioSug, margenReal, margenObj};
 }
 
 function renderRecetasInsights(){
@@ -5432,7 +5621,7 @@ function renderRecetasInsights(){
   const avgCosto=metrics.length? metrics.reduce((a,b)=>a+b.costo,0)/metrics.length:0;
   const avgPrecio=conPrecio.length? conPrecio.reduce((a,b)=>a+b.precio,0)/conPrecio.length:0;
   const bajoMargen=metrics.filter(m=> m.precio>0 && m.margenReal < (m.margenObj-2)).length;
-  const sinPrecio=metrics.filter(m=> m.precio<=0).length;
+  const sinPrecio=metrics.filter(m=> m.precioVenta<=0).length;
   const sinCosto=metrics.filter(m=> m.costo<=0).length;
   const sinCategoria=metrics.filter(m=> !(m.r.categoria||'').trim()).length;
 
@@ -5444,7 +5633,7 @@ function renderRecetasInsights(){
       {title:'Precio promedio', value:fmt.money(avgPrecio), meta:'Promedio del menú'},
       {title:'Costo promedio', value:fmt.money(avgCosto), meta:'Materia + ABC'},
       {title:'Bajo margen', value:`${bajoMargen}`, meta:'Debajo del objetivo'},
-      {title:'Sin precio', value:`${sinPrecio}`, meta:'Precio pendiente'}
+      {title:'Sin precio', value:`${sinPrecio}`, meta:'Precio menú pendiente'}
     ].map(k=>`<div class="recetas-kpi"><small>${k.title}</small><strong>${k.value}</strong><span>${k.meta}</span></div>`).join('');
   }
   const chip=document.getElementById('recetas-health-chip');
@@ -5454,7 +5643,7 @@ function renderRecetasInsights(){
   }
   const meta=document.getElementById('recetas-kpi-meta');
   if(meta){
-    meta.textContent=`${total} recetas · ${sinCategoria} sin categoría · ${sinCosto} sin costo · ${sinPrecio} sin precio`;
+    meta.textContent=`${total} recetas · ${sinCategoria} sin categoría · ${sinCosto} sin costo · ${sinPrecio} sin precio menú`;
   }
 
   const alertList=document.getElementById('recetas-alertas-list');
@@ -5470,7 +5659,7 @@ function renderRecetasInsights(){
     }).length;
     const alerts=[
       bajoMargen? `<li><strong>${bajoMargen} recetas bajo margen</strong><small>Revisar precio o receta</small></li>`:'',
-      sinPrecio? `<li><strong>${sinPrecio} recetas sin precio</strong><small>Definir precio por canal</small></li>`:'',
+      sinPrecio? `<li><strong>${sinPrecio} recetas sin precio</strong><small>Definir precio menú</small></li>`:'',
       sinCosto? `<li><strong>${sinCosto} recetas sin costo</strong><small>Completar ingredientes / costos</small></li>`:'',
       sinCategoria? `<li><strong>${sinCategoria} recetas sin categoría</strong><small>Necesario para análisis por familia</small></li>`:'',
       addonIssues? `<li><strong>${addonIssues} adiciones con margen bajo</strong><small>Ajustar precio extra</small></li>`:''
@@ -5654,7 +5843,7 @@ function renderRecetas(){
   list=list.filter(r=>{
     const m=calcRecetaMetrics(r);
     if(filtro==='bajo') return m.precio>0 && m.margenReal < (m.margenObj-2);
-    if(filtro==='sin-precio') return m.precio<=0;
+    if(filtro==='sin-precio') return m.precioVenta<=0;
     if(filtro==='sin-costo') return m.costo<=0;
     if(filtro==='sin-categoria') return !(r.categoria||'').trim();
     return true;
@@ -5672,9 +5861,11 @@ function renderRecetas(){
     const metrics=calcRecetaMetrics(r);
     const costo=metrics.costo;
     const precio=metrics.precio;
+    const precioVenta=metrics.precioVenta;
+    const precioSug=metrics.precioSug;
     const marginClass=precio<=0? '' : (metrics.margenReal<0?'margen-critico':(metrics.margenReal < (metrics.margenObj-2)?'margen-bajo':'margen-ok'));
     const marginLabel=precio>0? `${fmt.num(metrics.margenReal,1)}%`:'--';
-    return `<tr><td>${r.nombre}</td><td>${r.categoria||''}</td><td>${r.porciones||1}</td><td>${fmt.money(mp)}</td><td>${fmt.money(abcp)}</td><td>${fmt.money(costo)}</td><td>${fmt.money(precio)}</td><td class="${marginClass}">${marginLabel}</td><td><button class='btn' onclick="recetas.editar('${r.id}')">Editar</button> <button class='btn' onclick="recetas.duplicar('${r.id}')">Duplicar</button> <button class='btn' onclick="recetas.sharePDF('${r.id}')">PDF</button> <button class='btn' onclick="recetas.shareExcel('${r.id}')">Excel</button> <button class='btn danger' onclick="recetas.eliminar('${r.id}')">Eliminar</button></td></tr>`;
+    return `<tr><td>${r.nombre}</td><td>${r.categoria||''}</td><td>${r.porciones||1}</td><td>${fmt.money(mp)}</td><td>${fmt.money(abcp)}</td><td>${fmt.money(costo)}</td><td>${fmt.money(precioVenta||0)}</td><td>${fmt.money(precioSug||0)}</td><td class="${marginClass}">${marginLabel}</td><td><button class='btn' onclick="recetas.editar('${r.id}')">Editar</button> <button class='btn' onclick="recetas.duplicar('${r.id}')">Duplicar</button> <button class='btn' onclick="recetas.sharePDF('${r.id}')">PDF</button> <button class='btn' onclick="recetas.shareExcel('${r.id}')">Excel</button> <button class='btn danger' onclick="recetas.eliminar('${r.id}')">Eliminar</button></td></tr>`;
   }).join('');
 }
 
@@ -6318,6 +6509,17 @@ function runMigrations(){
         Data.del(Data.col.ajustes, a.id);
       });
       localStorage.setItem(doneKey3,'1');
+    }
+  }catch(e){}
+  // Migración: agregar precioVenta a recetas existentes
+  try{
+    const doneKey4=LocalDB.key('recetas_precio_venta_v1');
+    if(!localStorage.getItem(doneKey4)){
+      const rs=Data.get(Data.col.recetas)||[];
+      rs.forEach(r=>{
+        if(r.precioVenta==null){ Data.upd(Data.col.recetas, r.id, {precioVenta:0}); }
+      });
+      localStorage.setItem(doneKey4,'1');
     }
   }catch(e){}
 }
