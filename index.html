@@ -1012,6 +1012,7 @@ body.light-mode #panel-dashboard canvas{background:#FFFFFF;border:1px solid #e5e
     <div class="card">
       <div class="toolbar">
         <button class="btn" onclick="costosInsumos.nuevo()">Nuevo insumo (costo)</button>
+        <label class="grow">Buscar insumo<input id="rc-insumos-buscar" class="has-search" type="search" placeholder="Nombre o palabra clave"></label>
       </div>
       <h3>Insumos (costos para recetas)</h3>
       <table class="table" id="tbl-costos"><thead><tr><th>Insumo</th><th>Proveedor</th><th>Unidad</th><th>Costo unitario</th><th>Acciones</th></tr></thead><tbody></tbody></table>
@@ -2506,28 +2507,33 @@ function normalizeName(val){
     .trim();
 }
 
-function filterSelectOptions(select, query){
-  const q=normalizeName(query||'');
-  const current=select?.value||'';
+function renderInsumoOptions(select, items, query, preferredId){
   if(!select) return;
-  select.querySelectorAll('option').forEach(opt=>{
-    const label=normalizeName(opt.textContent||'');
-    const keep = !q || label.includes(q) || opt.value===current;
-    opt.hidden=!keep;
-  });
+  const q=normalizeName(query||'');
+  const list=q ? items.filter(i=> normalizeName(i.nombre).includes(q)) : items;
+  if(!list.length){
+    select.innerHTML="<option value='' disabled>Sin resultados</option>";
+    return;
+  }
+  select.innerHTML=list.map(i=>`<option value="${i.id}">${i.nombre}</option>`).join('');
+  const keepId=preferredId && list.some(i=>i.id===preferredId) ? preferredId : select.value;
+  if(keepId && list.some(i=>i.id===keepId)) select.value=keepId;
+  else select.value=list[0].id;
+  select.dispatchEvent(new Event('change'));
 }
 
-function setupInsumoSearch(row){
+function setupInsumoSearch(row, items){
   const input=row?.querySelector?.('.ing-search');
   const select=row?.querySelector?.('select.cost-item');
   if(!input || !select) return;
-  const run=()=> filterSelectOptions(select, input.value);
+  const source=Array.isArray(items) ? items : Data.get(Data.col.insumos_costeo);
+  const run=()=> renderInsumoOptions(select, source, input.value, select.value);
   input.addEventListener('input', run);
   input.addEventListener('focus', run);
   select.addEventListener('change', ()=>{
     if(input.value){
       input.value='';
-      filterSelectOptions(select, '');
+      renderInsumoOptions(select, source, '', select.value);
     }
   });
 }
@@ -3318,7 +3324,7 @@ const recetas={
     const setDefaults=()=>{ const item=LocalDB.byId(Data.col.insumos_costeo, sel.value); if(!item) return; setUnitOptions(item.unidad||'g'); unitSel.value=item.unidad||'g'; cu.value=Number(item.costoUnit||0); recetas.recalcCosteo(); };
     [sel, unitSel, cu, qty].forEach(e=> e.addEventListener('input', ()=> recetas.recalcCosteo()));
     sel.addEventListener('change', setDefaults); setDefaults();
-    setupInsumoSearch(tr);
+    setupInsumoSearch(tr, ins);
   },
   guardar(){
     const base={
@@ -3422,7 +3428,7 @@ const recetas={
       const item=LocalDB.byId(Data.col.insumos_costeo, i.costeoId||i.insumoId);
       setUnitOptions(item?.unidad||'g'); unitSel.value=i.unidad||item?.unidad||'g';
       [sel, unitSel, cu, qty].forEach(e=> e.addEventListener('input', ()=> recetas.recalcCosteo()));
-      setupInsumoSearch(tr);
+      setupInsumoSearch(tr, ins);
     });
     ['r-margen','r-porc','r-tprep'].forEach(id=> document.getElementById(id)?.addEventListener('input', ()=> recetas.recalcCosteo?.()));
     recetas.recalcCosteo?.();
@@ -6256,7 +6262,9 @@ function renderRecetas(){
 
 function renderCostosInsumos(){
   const tb=document.querySelector('#tbl-costos tbody'); if(!tb) return; const rows=Data.get(Data.col.insumos_costeo);
-  tb.innerHTML= rows.map(i=>`<tr><td>${i.nombre}</td><td>${LocalDB.byId(Data.col.proveedores,i.proveedorId)?.nombre||''}</td><td>${i.unidad||''}</td><td>${fmt.money(i.costoUnit||0)}</td><td><button class='btn' onclick="costosInsumos.editar('${i.id}')">Editar</button> <button class='btn' onclick="costosInsumos.duplicar('${i.id}')">Duplicar</button> <button class='btn danger' onclick="costosInsumos.eliminar('${i.id}')">Eliminar</button></td></tr>`).join('');
+  const q=normalizeName(document.getElementById('rc-insumos-buscar')?.value||'');
+  const list=q? rows.filter(i=> normalizeName(i.nombre).includes(q)) : rows;
+  tb.innerHTML= list.map(i=>`<tr><td>${i.nombre}</td><td>${LocalDB.byId(Data.col.proveedores,i.proveedorId)?.nombre||''}</td><td>${i.unidad||''}</td><td>${fmt.money(i.costoUnit||0)}</td><td><button class='btn' onclick="costosInsumos.editar('${i.id}')">Editar</button> <button class='btn' onclick="costosInsumos.duplicar('${i.id}')">Duplicar</button> <button class='btn danger' onclick="costosInsumos.eliminar('${i.id}')">Eliminar</button></td></tr>`).join('');
 }
 
 function renderInventario(){
@@ -6776,6 +6784,7 @@ function renderAll(){ renderDashboard(); renderVentas(); renderRecetas(); render
 // Filtro de recetas en vivo
 document.addEventListener('input', (e)=>{
   if(e.target && e.target.id==='rc-buscar'){ renderRecetas(); }
+  if(e.target && e.target.id==='rc-insumos-buscar'){ renderCostosInsumos(); }
   if(e.target && e.target.id==='ins-buscar'){ renderInventario(); }
 });
 document.addEventListener('change', (e)=>{
