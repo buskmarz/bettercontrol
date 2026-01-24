@@ -742,6 +742,7 @@ body.light-mode #panel-dashboard canvas{background:#FFFFFF;border:1px solid #e5e
         <button class="btn primary" onclick="recetas.nueva()">Nueva receta</button>
         <button class="btn" onclick="importMenuFromPhotos()">Importar menú (foto)</button>
         <button class="btn" onclick="importSamsInsumos()">Importar SAMS (foto)</button>
+        <button class="btn" onclick="importWalmartInsumos()">Importar Walmart (foto)</button>
         <label class="grow">Buscar receta<input id="rc-buscar" placeholder="Nombre, palabra clave…"></label>
         <label>Filtro<select id="rc-filtro"><option value="all">Todas</option><option value="bajo">Bajo margen</option><option value="sin-precio">Sin precio</option><option value="sin-costo">Sin costo</option><option value="sin-categoria">Sin categoría</option></select></label>
         <label>Ordenar<select id="rc-sort"><option value="nombre">Nombre</option><option value="margen">Margen real</option><option value="costo">Costo/porción</option><option value="precio">Precio sugerido</option></select></label>
@@ -2727,6 +2728,134 @@ function importSamsInsumos(){
     return;
   }
   notify(`SAMS importado: ${imported} compra(s) registradas.`, 'success');
+  renderInventario(); renderCompras(); renderGastos(); renderCostosInsumos(); renderRecetas();
+}
+
+function importWalmartInsumos(){
+  const provName='Walmart';
+  const provs=Data.get(Data.col.proveedores);
+  let prov=provs.find(p=> normalizeName(p.nombre)===normalizeName(provName));
+  if(!prov){ prov=Data.add(Data.col.proveedores,{nombre:provName}); }
+
+  const batches=[
+    {
+      key:'walmart_import_2026_01_21',
+      folio:'WMT-2026-01-21',
+      fecha:'2026-01-21T12:00:00',
+      items:[
+        {nombre:'Coco rallado Verde Valle 100 g', unidad:'g', baseQty:100, total:27.00},
+        {nombre:'Refresco Coca Cola sabor original 355 ml', unidad:'ml', baseQty:6*355, total:90.00},
+        {nombre:"Fresa Driscoll's 454 g", unidad:'g', baseQty:2*454, total:118.00}
+        // Nota: item de $49.90 no visible en imagen (pendiente).
+      ]
+    },
+    {
+      key:'walmart_import_2026_01_20',
+      folio:'WMT-2026-01-20',
+      fecha:'2026-01-20T12:00:00',
+      items:[
+        {nombre:'Pera Golden (bolsa aprox 1.3 kg)', unidad:'g', baseQty:1299, total:51.83},
+        {nombre:'Frijoles bayos La Sierra refritos 430 g', unidad:'g', baseQty:430, total:16.00},
+        {nombre:'Alimento líquido GüD almendras 1 L', unidad:'ml', baseQty:3*1000, total:177.00}
+      ]
+    },
+    {
+      key:'walmart_import_2026_01_15',
+      folio:'WMT-2026-01-15',
+      fecha:'2026-01-15T12:00:00',
+      items:[
+        {nombre:'Concentrado de arroz Deliciosa sabor horchata 945 ml', unidad:'ml', baseQty:945, total:64.00},
+        {nombre:'Pera Golden (bolsa aprox 1.3 kg)', unidad:'g', baseQty:1348, total:53.79},
+        {nombre:'Plátano chiapas por kilo', unidad:'g', baseQty:1448, total:26.58},
+        {nombre:'Aceitunas negras Serpis rodajas en salmuera 260 g', unidad:'g', baseQty:260, total:62.00},
+        {nombre:'Néctar de coco A de Coco original sin azúcar 1 L', unidad:'ml', baseQty:2*1000, total:106.00},
+        {nombre:'Alimento líquido GüD almendras 1 L', unidad:'ml', baseQty:2*1000, total:118.00},
+        {nombre:'Coco rallado Verde Valle 100 g', unidad:'g', baseQty:100, total:27.00}
+      ]
+    },
+    {
+      key:'walmart_import_2026_01_10',
+      folio:'WMT-2026-01-10',
+      fecha:'2026-01-10T12:00:00',
+      items:[
+        {nombre:'Pepperoni Campestre por kilo', unidad:'g', baseQty:102, total:36.72},
+        {nombre:'Refresco Schweppes ginger ale 6 botellas 296 ml', unidad:'ml', baseQty:6*296, total:105.00},
+        {nombre:'Mermelada de higo Helios extra 340 g', unidad:'g', baseQty:340, total:70.00}
+      ]
+    },
+    {
+      key:'walmart_import_2026_01_22',
+      folio:'WMT-2026-01-22',
+      fecha:'2026-01-22T12:00:00',
+      items:[
+        {nombre:'Frijoles peruanos La Sierra refritos 430 g', unidad:'g', baseQty:430, total:19.00},
+        {nombre:'Agua mineral Topo Chico 600 ml', unidad:'ml', baseQty:4*600, total:92.00},
+        {nombre:'Agua Ciel únicamente líquido 20 L', unidad:'ml', baseQty:4*20000, total:260.00},
+        {nombre:'Bebida a base de avena Oatly barista sin azúcar añadida 1 L', unidad:'ml', baseQty:2*1000, total:126.00}
+      ]
+    }
+  ];
+
+  const upsertInsumo=(nombre, unidad)=>{
+    let ins=Data.get(Data.col.insumos).find(i=> normalizeName(i.nombre)===normalizeName(nombre));
+    if(!ins){
+      ins=Data.add(Data.col.insumos,{nombre, unidad, existencia:0, costoPromedio:0, min:0, max:0});
+    } else if(!ins.unidad || !String(ins.unidad).trim()){
+      Data.upd(Data.col.insumos, ins.id, {unidad});
+    }
+    return ins;
+  };
+  const upsertCosteo=(nombre, unidad, costoUnit)=>{
+    let it=Data.get(Data.col.insumos_costeo).find(i=> normalizeName(i.nombre)===normalizeName(nombre));
+    if(!it){
+      it=Data.add(Data.col.insumos_costeo,{nombre, unidad, costoUnit, proveedorId:prov?.id||null});
+    } else {
+      const patch={};
+      if(!it.unidad || !String(it.unidad).trim()) patch.unidad=unidad;
+      patch.costoUnit=Number(costoUnit||it.costoUnit||0);
+      if(!it.proveedorId && prov?.id) patch.proveedorId=prov.id;
+      Data.upd(Data.col.insumos_costeo, it.id, patch);
+      it=LocalDB.byId(Data.col.insumos_costeo, it.id);
+    }
+    return it;
+  };
+
+  let imported=0;
+  batches.forEach(batch=>{
+    const flagKey=LocalDB.key(batch.key);
+    if(localStorage.getItem(flagKey)) return;
+    const merged=new Map();
+    batch.items.forEach(it=>{
+      const key=normalizeName(it.nombre);
+      const prev=merged.get(key);
+      if(prev){
+        prev.baseQty+=Number(it.baseQty||0);
+        prev.total+=Number(it.total||0);
+      } else {
+        merged.set(key, {...it});
+      }
+    });
+    const items=[...merged.values()];
+    const total=items.reduce((s,i)=> s+Number(i.total||0),0);
+    const compra=Data.add(Data.col.compras,{fechaHora:new Date(batch.fecha).toISOString(), proveedorId:prov?.id||null, metodoPago:'Tarjeta', folio:batch.folio, total});
+    items.forEach(it=>{
+      const baseQty=Number(it.baseQty||0);
+      const unitCost=baseQty>0? (Number(it.total||0)/baseQty) : 0;
+      const ins=upsertInsumo(it.nombre, it.unidad);
+      upsertCosteo(it.nombre, it.unidad, unitCost);
+      Data.add(Data.col.compras_detalle,{compraId:compra.id, insumoId:ins.id, nombre:it.nombre, cantidad:baseQty, unidad:it.unidad, costoUnit:unitCost, subtotal:baseQty*unitCost});
+      Data.add(Data.col.kardex,{fechaHora:new Date(batch.fecha).toISOString(), insumoId:ins.id, tipo:'entrada', cantidad:baseQty, costoUnit:unitCost, ref:batch.folio, notas:'Compra Walmart', compraId:compra.id});
+      LocalDB.update(Data.col.insumos, ins.id, {existencia:(ins.existencia||0)+baseQty, costoPromedio:unitCost, unidad:it.unidad});
+    });
+    localStorage.setItem(flagKey,'1');
+    imported++;
+  });
+
+  if(!imported){
+    notify('Walmart ya importado en este dispositivo.', 'warn');
+    return;
+  }
+  notify(`Walmart importado: ${imported} compra(s) registradas.`, 'success');
   renderInventario(); renderCompras(); renderGastos(); renderCostosInsumos(); renderRecetas();
 }
 
