@@ -211,6 +211,14 @@ body.light-mode .recetas-hero .hero-pill{background:rgba(255,255,255,0.82);borde
 input,select,textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text)}
 body.light-mode input,body.light-mode select,body.light-mode textarea{background:#fff}
 label{font-size:12px;color:var(--muted)}
+.has-search{
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='7'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>");
+  background-repeat:no-repeat;
+  background-position:10px 50%;
+  background-size:14px 14px;
+  padding-left:32px;
+}
+.ing-select{display:flex;flex-direction:column;gap:6px}
 .btn{appearance:none;border:1px solid var(--border);background:var(--card);color:var(--text);padding:8px 12px;border-radius:8px;cursor:pointer}
 .btn.primary{background:var(--brand);color:#111111;border-color:var(--brand)}
 .btn.warn{background:var(--warn);color:#111}
@@ -744,7 +752,7 @@ body.light-mode #panel-dashboard canvas{background:#FFFFFF;border:1px solid #e5e
         <button class="btn" onclick="importSamsInsumos()">Importar SAMS (foto)</button>
         <button class="btn" onclick="importWalmartInsumos()">Importar Walmart (foto)</button>
         <button class="btn" onclick="importCostcoInsumos()">Importar Costco (foto)</button>
-        <label class="grow">Buscar receta<input id="rc-buscar" placeholder="Nombre, palabra clave…"></label>
+        <label class="grow">Buscar receta<input id="rc-buscar" class="has-search" type="search" placeholder="Nombre, palabra clave…"></label>
         <label>Filtro<select id="rc-filtro"><option value="all">Todas</option><option value="bajo">Bajo margen</option><option value="sin-precio">Sin precio</option><option value="sin-costo">Sin costo</option><option value="sin-categoria">Sin categoría</option></select></label>
         <label>Ordenar<select id="rc-sort"><option value="nombre">Nombre</option><option value="margen">Margen real</option><option value="costo">Costo/porción</option><option value="precio">Precio sugerido</option></select></label>
         <button class="btn" onclick="recetasCalcularCosto()">Recalcular costos</button>
@@ -1017,6 +1025,7 @@ body.light-mode #panel-dashboard canvas{background:#FFFFFF;border:1px solid #e5e
     <div class="toolbar">
       <button class="btn" onclick="inventario.nuevoInsumo()">Nuevo insumo</button>
       <button class="btn" onclick="exportCSV.kardex()">Exportar Kardex CSV</button>
+      <label class="grow">Buscar insumo<input id="ins-buscar" class="has-search" type="search" placeholder="Nombre o palabra clave"></label>
     </div>
     <div class="card">
       <h3>Insumos</h3>
@@ -2497,6 +2506,32 @@ function normalizeName(val){
     .trim();
 }
 
+function filterSelectOptions(select, query){
+  const q=normalizeName(query||'');
+  const current=select?.value||'';
+  if(!select) return;
+  select.querySelectorAll('option').forEach(opt=>{
+    const label=normalizeName(opt.textContent||'');
+    const keep = !q || label.includes(q) || opt.value===current;
+    opt.hidden=!keep;
+  });
+}
+
+function setupInsumoSearch(row){
+  const input=row?.querySelector?.('.ing-search');
+  const select=row?.querySelector?.('select.cost-item');
+  if(!input || !select) return;
+  const run=()=> filterSelectOptions(select, input.value);
+  input.addEventListener('input', run);
+  input.addEventListener('focus', run);
+  select.addEventListener('change', ()=>{
+    if(input.value){
+      input.value='';
+      filterSelectOptions(select, '');
+    }
+  });
+}
+
 function importMenuFromPhotos(){
   const baseCat={
     creaciones:'Bebidas · Creaciones',
@@ -3265,7 +3300,7 @@ const recetas={
   agregarIng(){
     const ins=Data.get(Data.col.insumos_costeo);
     const tr=document.createElement('tr');
-    tr.innerHTML=`<td><select class='cost-item'>${ins.map(i=>`<option value="${i.id}">${i.nombre}</option>`).join('')}</select></td>
+    tr.innerHTML=`<td><div class="ing-select"><input class="ing-search has-search" type="search" placeholder="Buscar insumo"><select class='cost-item'>${ins.map(i=>`<option value="${i.id}">${i.nombre}</option>`).join('')}</select></div></td>
       <td><input class='qty' type="number" min="0.001" step="0.001" value="1"></td>
       <td><select class='unit'></select></td>
       <td><input class='cu' type="number" min="0" step="0.0001" value="0"></td>
@@ -3283,6 +3318,7 @@ const recetas={
     const setDefaults=()=>{ const item=LocalDB.byId(Data.col.insumos_costeo, sel.value); if(!item) return; setUnitOptions(item.unidad||'g'); unitSel.value=item.unidad||'g'; cu.value=Number(item.costoUnit||0); recetas.recalcCosteo(); };
     [sel, unitSel, cu, qty].forEach(e=> e.addEventListener('input', ()=> recetas.recalcCosteo()));
     sel.addEventListener('change', setDefaults); setDefaults();
+    setupInsumoSearch(tr);
   },
   guardar(){
     const base={
@@ -3368,7 +3404,7 @@ const recetas={
     Data.get(Data.col.recetas_ingredientes).filter(i=> i.recetaId===id).forEach(i=>{
       const tr=document.createElement('tr');
       const opts=ins.map(inf=>`<option value="${inf.id}" ${ (i.costeoId===inf.id || i.insumoId===inf.id || (i.nombre&&inf.nombre===i.nombre))?'selected':''}>${inf.nombre}</option>`).join('');
-      tr.innerHTML=`<td><select class='cost-item'>${opts}</select></td>
+      tr.innerHTML=`<td><div class="ing-select"><input class="ing-search has-search" type="search" placeholder="Buscar insumo"><select class='cost-item'>${opts}</select></div></td>
         <td><input class='qty' type="number" min="0.001" step="0.001" value="${i.cantidad||1}"></td>
         <td><select class='unit'></select></td>
         <td><input class='cu' type="number" min="0" step="0.0001" value="${(LocalDB.byId(Data.col.insumos_costeo, i.costeoId||i.insumoId)?.costoUnit) ?? i.costoUnit ?? 0}"></td>
@@ -3386,6 +3422,7 @@ const recetas={
       const item=LocalDB.byId(Data.col.insumos_costeo, i.costeoId||i.insumoId);
       setUnitOptions(item?.unidad||'g'); unitSel.value=i.unidad||item?.unidad||'g';
       [sel, unitSel, cu, qty].forEach(e=> e.addEventListener('input', ()=> recetas.recalcCosteo()));
+      setupInsumoSearch(tr);
     });
     ['r-margen','r-porc','r-tprep'].forEach(id=> document.getElementById(id)?.addEventListener('input', ()=> recetas.recalcCosteo?.()));
     recetas.recalcCosteo?.();
@@ -6224,7 +6261,9 @@ function renderCostosInsumos(){
 
 function renderInventario(){
   const tb=document.querySelector('#tbl-insumos tbody'); const rows=Data.get(Data.col.insumos);
-  tb.innerHTML=rows.map(i=>`<tr><td>${i.nombre}</td><td>${i.unidad}</td><td>${fmt.num(i.existencia)}</td><td>${fmt.money(i.costoPromedio)}</td><td>${i.min||0}</td><td>${i.max||0}</td><td><button class='btn' onclick="inventario.ajuste('${i.id}')">Ajuste</button> <button class='btn' onclick="inventario.editar('${i.id}')">Editar</button> <button class='btn' onclick="inventario.duplicar('${i.id}')">Duplicar</button> <button class='btn danger' onclick="inventario.eliminar('${i.id}')">Eliminar</button></td></tr>`).join('');
+  const q=normalizeName(document.getElementById('ins-buscar')?.value||'');
+  const list=q? rows.filter(i=> normalizeName(i.nombre).includes(q)) : rows;
+  tb.innerHTML=list.map(i=>`<tr><td>${i.nombre}</td><td>${i.unidad}</td><td>${fmt.num(i.existencia)}</td><td>${fmt.money(i.costoPromedio)}</td><td>${i.min||0}</td><td>${i.max||0}</td><td><button class='btn' onclick="inventario.ajuste('${i.id}')">Ajuste</button> <button class='btn' onclick="inventario.editar('${i.id}')">Editar</button> <button class='btn' onclick="inventario.duplicar('${i.id}')">Duplicar</button> <button class='btn danger' onclick="inventario.eliminar('${i.id}')">Eliminar</button></td></tr>`).join('');
   // filtro kardex
   const sel=document.getElementById('kdx-insumo'); sel.innerHTML='<option value="">(Todos)</option>'+rows.map(i=>`<option value='${i.id}'>${i.nombre}</option>`).join('');
   inventario.renderKardex();
@@ -6735,7 +6774,10 @@ function mockApiTest(){ notify('API mock: OK'); }
 function renderAll(){ renderDashboard(); renderVentas(); renderRecetas(); renderCostosInsumos(); renderInventario(); renderCompras(); renderGastos(); sobresManager.init(); renderCortes(); renderAgenda(); renderCatalogos(); renderConfig(); nominaGen.init?.(); renderNominas(); }
 
 // Filtro de recetas en vivo
-document.addEventListener('input', (e)=>{ if(e.target && e.target.id==='rc-buscar'){ renderRecetas(); } });
+document.addEventListener('input', (e)=>{
+  if(e.target && e.target.id==='rc-buscar'){ renderRecetas(); }
+  if(e.target && e.target.id==='ins-buscar'){ renderInventario(); }
+});
 document.addEventListener('change', (e)=>{
   if(e.target && (e.target.id==='rc-filtro' || e.target.id==='rc-sort')){ renderRecetas(); }
   if(e.target && (e.target.id==='sim-receta' || e.target.id==='sim-tamano' || e.target.id==='sim-canal')){ renderRecetasSimulator(); }
