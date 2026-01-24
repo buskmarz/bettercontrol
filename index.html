@@ -1033,8 +1033,9 @@ body.light-mode #panel-dashboard canvas{background:#FFFFFF;border:1px solid #e5e
 
   <section id="panel-compras" class="panel hidden"><h2>Insumos / Compras</h2>
     <div class="toolbar">
-      <button class="btn" onclick="compras.nueva()">Nueva compra</button>
-      <button class="btn" onclick="exportCSV.compras()">Exportar CSV</button>
+        <button class="btn" onclick="compras.nueva()">Nueva compra</button>
+        <button class="btn" onclick="importSamsInsumos()">Importar SAMS (foto)</button>
+        <button class="btn" onclick="exportCSV.compras()">Exportar CSV</button>
     </div>
     <div id="compra-form" class="card hidden"></div>
     <div class="card">
@@ -2645,6 +2646,90 @@ function importMenuFromPhotos(){
   renderRecetas();
 }
 
+function importSamsInsumos(){
+  const provName='Sams Club';
+  const provs=Data.get(Data.col.proveedores);
+  let prov=provs.find(p=> normalizeName(p.nombre)===normalizeName(provName));
+  if(!prov){ prov=Data.add(Data.col.proveedores,{nombre:provName}); }
+
+  const batches=[
+    {
+      key:'sams_import_img1',
+      folio:'SAMS-IMG-1',
+      fecha:new Date().toISOString(),
+      items:[
+        {nombre:'Agua purificada gasificada Ciel sifon 1.75 L', unidad:'ml', baseQty:8*1750, total:226.25},
+        {nombre:"Totopos de tortilla de maiz Member's Mark 800 g", unidad:'g', baseQty:2*800, total:136.50},
+        {nombre:'Pan Oroweat Butter Milk 680 g', unidad:'g', baseQty:3*680, total:194.77},
+        {nombre:'Pan integral Oroweat Multigrano 680 g', unidad:'g', baseQty:3*680, total:194.77},
+        {nombre:'Ensalada italiana Mr. Lucky 908 g', unidad:'g', baseQty:908, total:52.52},
+        {nombre:'Pesto clasico Filippo Berio 520 g', unidad:'g', baseQty:520, total:178.00}
+      ]
+    },
+    {
+      key:'sams_import_img2',
+      folio:'SAMS-IMG-2',
+      fecha:new Date().toISOString(),
+      items:[
+        {nombre:"Totopos de tortilla de maiz Member's Mark 800 g", unidad:'g', baseQty:2*800, total:138.00},
+        {nombre:'Pan Oroweat Butter Milk 680 g', unidad:'g', baseQty:4*680, total:255.99},
+        {nombre:'Pan integral Oroweat Multigrano 680 g', unidad:'g', baseQty:4*680, total:255.99},
+        {nombre:'Salsa macha Don Emilio 440 g', unidad:'g', baseQty:440, total:128.99}
+      ]
+    }
+  ];
+
+  const upsertInsumo=(nombre, unidad)=>{
+    let ins=Data.get(Data.col.insumos).find(i=> normalizeName(i.nombre)===normalizeName(nombre));
+    if(!ins){
+      ins=Data.add(Data.col.insumos,{nombre, unidad, existencia:0, costoPromedio:0, min:0, max:0});
+    } else if(!ins.unidad || !String(ins.unidad).trim()){
+      Data.upd(Data.col.insumos, ins.id, {unidad});
+    }
+    return ins;
+  };
+  const upsertCosteo=(nombre, unidad, costoUnit)=>{
+    let it=Data.get(Data.col.insumos_costeo).find(i=> normalizeName(i.nombre)===normalizeName(nombre));
+    if(!it){
+      it=Data.add(Data.col.insumos_costeo,{nombre, unidad, costoUnit, proveedorId:prov?.id||null});
+    } else {
+      const patch={};
+      if(!it.unidad || !String(it.unidad).trim()) patch.unidad=unidad;
+      patch.costoUnit=Number(costoUnit||it.costoUnit||0);
+      if(!it.proveedorId && prov?.id) patch.proveedorId=prov.id;
+      Data.upd(Data.col.insumos_costeo, it.id, patch);
+      it=LocalDB.byId(Data.col.insumos_costeo, it.id);
+    }
+    return it;
+  };
+
+  let imported=0;
+  batches.forEach(batch=>{
+    const flagKey=LocalDB.key(batch.key);
+    if(localStorage.getItem(flagKey)) return;
+    const total=batch.items.reduce((s,i)=> s+Number(i.total||0),0);
+    const compra=Data.add(Data.col.compras,{fechaHora:batch.fecha, proveedorId:prov?.id||null, metodoPago:'Tarjeta', folio:batch.folio, total});
+    batch.items.forEach(it=>{
+      const baseQty=Number(it.baseQty||0);
+      const unitCost=baseQty>0? (Number(it.total||0)/baseQty) : 0;
+      const ins=upsertInsumo(it.nombre, it.unidad);
+      upsertCosteo(it.nombre, it.unidad, unitCost);
+      Data.add(Data.col.compras_detalle,{compraId:compra.id, insumoId:ins.id, nombre:it.nombre, cantidad:baseQty, unidad:it.unidad, costoUnit:unitCost, subtotal:baseQty*unitCost});
+      Data.add(Data.col.kardex,{fechaHora:batch.fecha, insumoId:ins.id, tipo:'entrada', cantidad:baseQty, costoUnit:unitCost, ref:batch.folio, notas:'Compra SAMS', compraId:compra.id});
+      LocalDB.update(Data.col.insumos, ins.id, {existencia:(ins.existencia||0)+baseQty, costoPromedio:unitCost, unidad:it.unidad});
+    });
+    localStorage.setItem(flagKey,'1');
+    imported++;
+  });
+
+  if(!imported){
+    notify('SAMS ya importado en este dispositivo.', 'warn');
+    return;
+  }
+  notify(`SAMS importado: ${imported} compra(s) registradas.`, 'success');
+  renderInventario(); renderCompras(); renderGastos(); renderCostosInsumos(); renderRecetas();
+}
+
 /****************
  * BMC: Ventas  *
  ****************/
@@ -2938,7 +3023,14 @@ const recetas={
       <td><button class="btn" onclick="this.closest('tr').remove(); recetas.recalcCosteo()">✕</button></td>`;
     document.querySelector('#tbl-ing tbody').appendChild(tr);
     const sel=tr.querySelector('select.cost-item'); const unitSel=tr.querySelector('select.unit'); const cu=tr.querySelector('input.cu'); const qty=tr.querySelector('input.qty');
-    const setUnitOptions=(base)=>{ const b=(base||'').toLowerCase(); const opts=(b==='kg'||b==='g'||b==='oz')? ['g','kg','oz']: ['ml','L','oz']; unitSel.innerHTML=opts.map(u=>`<option value='${u}'>${u}</option>`).join(''); };
+    const setUnitOptions=(base)=>{
+      const b=(base||'').toLowerCase();
+      let opts;
+      if(b==='pz' || b==='pieza' || b==='unid' || b==='unidad'){ opts=['pz']; }
+      else if(b==='kg'||b==='g'||b==='oz'){ opts=['g','kg','oz']; }
+      else { opts=['ml','L','oz']; }
+      unitSel.innerHTML=opts.map(u=>`<option value='${u}'>${u}</option>`).join('');
+    };
     const setDefaults=()=>{ const item=LocalDB.byId(Data.col.insumos_costeo, sel.value); if(!item) return; setUnitOptions(item.unidad||'g'); unitSel.value=item.unidad||'g'; cu.value=Number(item.costoUnit||0); recetas.recalcCosteo(); };
     [sel, unitSel, cu, qty].forEach(e=> e.addEventListener('input', ()=> recetas.recalcCosteo()));
     sel.addEventListener('change', setDefaults); setDefaults();
@@ -3034,7 +3126,14 @@ const recetas={
         <td><button class="btn" onclick="this.closest('tr').remove(); recetas.recalcCosteo()">✕</button></td>`;
       tbody.appendChild(tr);
       const sel=tr.querySelector('select.cost-item'); const unitSel=tr.querySelector('select.unit'); const cu=tr.querySelector('input.cu'); const qty=tr.querySelector('input.qty');
-      const setUnitOptions=(base)=>{ const b=(base||'').toLowerCase(); const opts=(b==='kg'||b==='g'||b==='oz')? ['g','kg','oz']: ['ml','L','oz']; unitSel.innerHTML=opts.map(u=>`<option value='${u}'>${u}</option>`).join(''); };
+      const setUnitOptions=(base)=>{
+        const b=(base||'').toLowerCase();
+        let opts;
+        if(b==='pz' || b==='pieza' || b==='unid' || b==='unidad'){ opts=['pz']; }
+        else if(b==='kg'||b==='g'||b==='oz'){ opts=['g','kg','oz']; }
+        else { opts=['ml','L','oz']; }
+        unitSel.innerHTML=opts.map(u=>`<option value='${u}'>${u}</option>`).join('');
+      };
       const item=LocalDB.byId(Data.col.insumos_costeo, i.costeoId||i.insumoId);
       setUnitOptions(item?.unidad||'g'); unitSel.value=i.unidad||item?.unidad||'g';
       [sel, unitSel, cu, qty].forEach(e=> e.addEventListener('input', ()=> recetas.recalcCosteo()));
@@ -3222,7 +3321,7 @@ recetas.recalcCosteo=function(){
 const costosInsumos={
   nuevo(){
     const nombre=prompt('Nombre del insumo (para recetas)'); if(!nombre) return;
-    const allowed=['g','kg','ml','L','oz']; let unidad=prompt('Unidad (elige: g, kg, ml, L, oz)','g')||'g'; unidad = allowed.includes(unidad)? unidad : 'g';
+    const allowed=['g','kg','ml','L','oz','pz']; let unidad=prompt('Unidad (elige: g, kg, ml, L, oz, pz)','g')||'g'; unidad = allowed.includes(unidad)? unidad : 'g';
     const costo=Number(prompt('Costo unitario en la unidad elegida','0')||0);
     const provs=Data.get(Data.col.proveedores); const provList=provs.map(p=>p.nombre).join(', ');
     let provName = prompt('Proveedor (elige exacto de la lista o escribe uno nuevo):\n'+provList, provs[0]?.nombre||'')||'';
@@ -3232,7 +3331,7 @@ const costosInsumos={
   },
   editar(id){
     const it=LocalDB.byId(Data.col.insumos_costeo,id); if(!it) return;
-    const nombre=prompt('Nombre', it.nombre)||it.nombre; const allowed=['g','kg','ml','L','oz']; let unidad=prompt('Unidad (g, kg, ml, L, oz)', it.unidad||'g')||it.unidad||'g'; unidad = allowed.includes(unidad)? unidad : (it.unidad||'g'); const costo=Number(prompt('Costo unitario', it.costoUnit||0)||it.costoUnit||0);
+    const nombre=prompt('Nombre', it.nombre)||it.nombre; const allowed=['g','kg','ml','L','oz','pz']; let unidad=prompt('Unidad (g, kg, ml, L, oz, pz)', it.unidad||'g')||it.unidad||'g'; unidad = allowed.includes(unidad)? unidad : (it.unidad||'g'); const costo=Number(prompt('Costo unitario', it.costoUnit||0)||it.costoUnit||0);
     const provs=Data.get(Data.col.proveedores); const provList=provs.map(p=>p.nombre).join(', ');
     let provName = prompt('Proveedor (lista: '+provList+')', (LocalDB.byId(Data.col.proveedores,it.proveedorId)?.nombre)||'')||'';
     let prov=provs.find(p=> (p.nombre||'').toLowerCase()===provName.toLowerCase()); if(!prov && provName){ prov=Data.add(Data.col.proveedores,{nombre:provName}); }
@@ -3253,14 +3352,14 @@ const costosInsumos={
     const prov=document.getElementById('ci-prov')?.value||''; const unidad=document.getElementById('ci-unidad')?.value||'g'; const costo=Number(document.getElementById('ci-costo')?.value||0);
     Data.upd(Data.col.insumos_costeo,id,{nombre,proveedorId:prov||null,unidad,costoUnit:costo}); notify('Insumo actualizado','success'); document.getElementById('costeo-form')?.classList.add('hidden'); renderCostosInsumos();
   },
-  form(t){ const el=document.getElementById('costeo-form'); el.classList.remove('hidden'); const provs=Data.get(Data.col.proveedores); const opts=provs.map(p=>`<option value='${p.id}'>${p.nombre}</option>`).join(''); const unit=`<select id='ci-unidad'><option>g</option><option>kg</option><option>ml</option><option>L</option><option>oz</option></select>`; el.innerHTML=t+opts.replace(/\n/g,''); },
+  form(t){ const el=document.getElementById('costeo-form'); el.classList.remove('hidden'); const provs=Data.get(Data.col.proveedores); const opts=provs.map(p=>`<option value='${p.id}'>${p.nombre}</option>`).join(''); const unit=`<select id='ci-unidad'><option>g</option><option>kg</option><option>ml</option><option>L</option><option>oz</option><option>pz</option></select>`; el.innerHTML=t+opts.replace(/\n/g,''); },
   nuevo(){
     const el=document.getElementById('costeo-form'); el.classList.remove('hidden'); const provs=Data.get(Data.col.proveedores);
     el.innerHTML=`
       <div class='row'>
         <label class='grow'>Nombre<input id='ci-nombre' placeholder='Café Finsa Santa Cruz'></label>
         <label class='grow'>Proveedor<select id='ci-prov'><option value=''>Sin proveedor</option>${provs.map(p=>`<option value='${p.id}'>${p.nombre}</option>`).join('')}</select></label>
-        <label>Unidad<select id='ci-unidad'><option>g</option><option>kg</option><option>ml</option><option>L</option><option>oz</option></select></label>
+        <label>Unidad<select id='ci-unidad'><option>g</option><option>kg</option><option>ml</option><option>L</option><option>oz</option><option>pz</option></select></label>
         <label>Costo unit<input id='ci-costo' type='number' step='0.0001' min='0' value='0'></label>
       </div>
       <div class='toolbar'><button class='btn primary' onclick='costosInsumos.guardar()'>Guardar</button> <button class='btn ghost' onclick="document.getElementById('costeo-form').classList.add('hidden')">Cerrar</button></div>
@@ -3273,7 +3372,7 @@ const costosInsumos={
       <div class='row'>
         <label class='grow'>Nombre<input id='ci-nombre' value='${it.nombre||''}'></label>
         <label class='grow'>Proveedor<select id='ci-prov'><option value=''>Sin proveedor</option>${provs.map(p=>`<option value='${p.id}' ${it.proveedorId===p.id?'selected':''}>${p.nombre}</option>`).join('')}</select></label>
-        <label>Unidad<select id='ci-unidad'><option ${it.unidad==='g'?'selected':''}>g</option><option ${it.unidad==='kg'?'selected':''}>kg</option><option ${it.unidad==='ml'?'selected':''}>ml</option><option ${it.unidad==='L'?'selected':''}>L</option><option ${it.unidad==='oz'?'selected':''}>oz</option></select></label>
+        <label>Unidad<select id='ci-unidad'><option ${it.unidad==='g'?'selected':''}>g</option><option ${it.unidad==='kg'?'selected':''}>kg</option><option ${it.unidad==='ml'?'selected':''}>ml</option><option ${it.unidad==='L'?'selected':''}>L</option><option ${it.unidad==='oz'?'selected':''}>oz</option><option ${it.unidad==='pz'?'selected':''}>pz</option></select></label>
         <label>Costo unit<input id='ci-costo' type='number' step='0.0001' min='0' value='${it.costoUnit||0}'></label>
       </div>
       <div class='toolbar'><button class='btn primary' onclick="costosInsumos.actualizar('${id}')">Actualizar</button> <button class='btn ghost' onclick="document.getElementById('costeo-form').classList.add('hidden')">Cerrar</button></div>
@@ -3284,7 +3383,7 @@ const costosInsumos={
 const inventario={
   nuevoInsumo(){
     const nombre=prompt('Nombre del insumo'); if(!nombre) return;
-    Data.add(Data.col.insumos,{nombre,unidad:prompt('Unidad (g/ml/unid)','g'),costoPromedio:Number(prompt('Costo unitario promedio','0')||0),existencia:Number(prompt('Existencia inicial','0')||0),min:0,max:0});
+    Data.add(Data.col.insumos,{nombre,unidad:prompt('Unidad (g/ml/unid/pz)','g'),costoPromedio:Number(prompt('Costo unitario promedio','0')||0),existencia:Number(prompt('Existencia inicial','0')||0),min:0,max:0});
     renderInventario();
   },
   renderKardex(){
