@@ -2434,7 +2434,11 @@ const Data={
     proveedores:'proveedores', estaciones:'estaciones', empleados:'empleados', clientes:'clientes', nominas:'nominas', insumos_costeo:'insumos_costeo', adiciones:'adiciones'
   },
   get:(c)=> LocalDB.get(c),
-  add:(c,obj)=> LocalDB.create(c,{id:uid(),...obj}),
+  add:(c,obj)=>{
+    const clean={...(obj||{})};
+    if(clean.id==null) delete clean.id;
+    return LocalDB.create(c,{id:uid(),...clean});
+  },
   upd:(c,id,patch)=> LocalDB.update(c,id,patch),
   del:(c,id)=> LocalDB.remove(c,id),
   // Convenience: filter by predicate (mirror LocalDB.listBy)
@@ -3647,7 +3651,7 @@ const costosInsumos={
     Data.upd(Data.col.insumos_costeo,id,{nombre,unidad,costoUnit:costo, proveedorId:prov?.id||null}); notify('Insumo actualizado','success'); renderCostosInsumos(); recetasCalcularCosto(true); renderRecetas();
   },
   eliminar(id){
-    const used=Data.get(Data.col.recetas_ingredientes).some(i=> i.costeoId===id);
+    const used=Data.get(Data.col.recetas_ingredientes).some(i=> i.costeoId===id || i.insumoId===id);
     if(used){ alert('Este insumo está en uso en alguna receta. Edita o elimina primero esas líneas.'); return; }
     if(!confirm('¿Eliminar insumo de costeo?')) return; Data.del(Data.col.insumos_costeo,id); notify('Insumo eliminado','success'); renderCostosInsumos(); recetasCalcularCosto(true); renderRecetas();
   },
@@ -6935,6 +6939,37 @@ function runMigrations(){
         Data.del(Data.col.ajustes, a.id);
       });
       localStorage.setItem(doneKey3,'1');
+    }
+  }catch(e){}
+  // Migración: asegurar IDs válidos en insumos de costeo y reparar referencias faltantes
+  try{
+    const doneKeyFix=LocalDB.key('insumos_costeo_id_fix_v1');
+    if(!localStorage.getItem(doneKeyFix)){
+      const list=Data.get(Data.col.insumos_costeo)||[];
+      let changed=false;
+      const seen=new Set();
+      list.forEach(it=>{
+        const id=it.id;
+        if(id==null || id==='' || seen.has(id)){
+          it.id=uid();
+          changed=true;
+        }
+        seen.add(it.id);
+      });
+      if(changed){ LocalDB.set(Data.col.insumos_costeo, list); }
+      const byName=new Map(list.map(it=>[normalizeName(it.nombre), it.id]));
+      const ids=new Set(list.map(it=>it.id));
+      const ings=Data.get(Data.col.recetas_ingredientes)||[];
+      let ingChanged=false;
+      ings.forEach(i=>{
+        const cid=i.costeoId;
+        if(cid==null || cid==='' || cid==='undefined' || !ids.has(cid)){
+          const matchId=byName.get(normalizeName(i.nombre));
+          if(matchId){ i.costeoId=matchId; ingChanged=true; }
+        }
+      });
+      if(ingChanged){ LocalDB.set(Data.col.recetas_ingredientes, ings); }
+      localStorage.setItem(doneKeyFix,'1');
     }
   }catch(e){}
   // Migración: agregar precioVenta a recetas existentes
