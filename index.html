@@ -163,7 +163,20 @@ body.light-mode .ledger-card .btn.ledger-expand:hover{background:rgba(15,23,42,0
 body.light-mode .table tr:hover{background:rgba(17,24,39,0.05)}
 .recetas-header{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;justify-content:space-between;margin-bottom:12px}
 .recetas-header .title-block{max-width:720px}
+.recetas-toolbar{width:100%}
+.recetas-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;width:100%}
+.recetas-tabs .btn{padding:6px 14px;font-size:12px;border-radius:999px}
+.recetas-tabs .btn.active{background:var(--brand);color:#111111;border-color:rgba(255,215,75,0.9);box-shadow:0 12px 28px rgba(255,215,75,0.25)}
+body.light-mode .recetas-tabs .btn.active{background:#111827;color:#ffffff;border-color:#111827}
+.recetas-section{display:none}
+.recetas-section.active{display:block}
+.recetas-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+.recetas-summary-main,.recetas-summary-side{display:grid;gap:16px}
+.recetas-filters{align-items:flex-end}
 .recetas-hero{position:relative;padding:22px;border-radius:22px;overflow:hidden;background:linear-gradient(130deg,rgba(255,215,75,0.16),rgba(56,189,248,0.08) 40%,rgba(15,23,42,0.5));border:1px solid rgba(255,255,255,0.12)}
+.recetas-hero.compact{padding:16px}
+.recetas-hero.compact h3{font-size:16px}
+.recetas-hero.compact .hero-grid{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
 .recetas-hero::after{content:'';position:absolute;inset:-40%;background:radial-gradient(50% 50% at 20% 20%,rgba(255,255,255,0.16),transparent 60%);pointer-events:none}
 .recetas-hero h3{margin:0 0 6px 0;font-size:18px}
 .recetas-hero p{margin:0 0 14px 0;color:var(--muted)}
@@ -744,283 +757,307 @@ body.light-mode #panel-dashboard canvas{background:#FFFFFF;border:1px solid #e5e
     <div class="recetas-header">
       <div class="title-block">
         <h2>Recetas / Costeo</h2>
-        <p class="muted">Sistema integral para costeo real, precios óptimos y rentabilidad accionable. Diseñado para operar rápido en hora pico, con mínimo error humano.</p>
+        <p class="muted">Control rápido del menú: costos reales, precios por canal y rentabilidad clara.</p>
       </div>
-      <div class="toolbar">
+      <div class="toolbar recetas-toolbar">
         <button class="btn primary" onclick="recetas.nueva()">Nueva receta</button>
-        <button class="btn" onclick="importMenuFromPhotos()">Importar menú (foto)</button>
-        <button class="btn" onclick="importSamsInsumos()">Importar SAMS (foto)</button>
-        <button class="btn" onclick="importWalmartInsumos()">Importar Walmart (foto)</button>
-        <button class="btn" onclick="importCostcoInsumos()">Importar Costco (foto)</button>
-        <label class="grow">Buscar receta<input id="rc-buscar" class="has-search" type="search" placeholder="Nombre, palabra clave…"></label>
-        <label>Filtro<select id="rc-filtro"><option value="all">Todas</option><option value="bajo">Bajo margen</option><option value="sin-precio">Sin precio</option><option value="sin-costo">Sin costo</option><option value="sin-categoria">Sin categoría</option></select></label>
-        <label>Ordenar<select id="rc-sort"><option value="nombre">Nombre</option><option value="margen">Margen real</option><option value="costo">Costo/porción</option><option value="precio">Precio sugerido</option></select></label>
-        <button class="btn" onclick="recetasCalcularCosto()">Recalcular costos</button>
-        <button class="btn" onclick="recetas.exportPDF()">Exportar PDF</button>
+      </div>
+      <div class="recetas-tabs" id="recetas-tabs" role="tablist" aria-label="Secciones de recetas">
+        <button class="btn ghost active" type="button" data-recetas-tab="resumen">Resumen</button>
+        <button class="btn ghost" type="button" data-recetas-tab="simulador">Simulador</button>
+        <button class="btn ghost" type="button" data-recetas-tab="config">Configuración</button>
+        <button class="btn ghost" type="button" data-recetas-tab="recetas">Recetas</button>
+        <button class="btn ghost" type="button" data-recetas-tab="insumos">Insumos</button>
+        <button class="btn ghost" type="button" data-recetas-tab="guia">Guía</button>
       </div>
     </div>
 
-    <div class="card recetas-hero">
-      <h3>Objetivo: control total del menú, no solo contabilidad</h3>
-      <p>Todo el costeo se mueve desde 3 decisiones diarias: captura clara, precio por canal y visibilidad de rentabilidad real.</p>
-      <div class="hero-grid">
-        <div class="hero-pill"><strong>Costeo real</strong>Receta + ABC + mermas + adiciones. Margen real por porción.</div>
-        <div class="hero-pill"><strong>Precio por canal</strong>Tienda, delivery y combos con ajustes automáticos.</div>
-        <div class="hero-pill"><strong>Rentabilidad accionable</strong>Top estrellas y “se venden pero no dejan”.</div>
-        <div class="hero-pill"><strong>Operación rápida</strong>Captura express, duplicados y plantillas.</div>
-      </div>
-    </div>
-
-    <div class="card" id="recetas-kpis-card">
-      <div class="card-title-flex">
-        <h3>Centro de control del menú</h3>
-        <span class="title-chip" id="recetas-health-chip">--</span>
-      </div>
-      <div class="recetas-kpi-grid" id="recetas-kpi-grid"></div>
-      <div class="recetas-meta" id="recetas-kpi-meta"></div>
-    </div>
-
-    <div class="chart-grid-2 tight">
-      <div class="card" id="recetas-insights-card">
-        <div class="card-title-flex">
-          <h3>Rentabilidad real (ventas)</h3>
-          <span class="title-chip">Menú completo</span>
-        </div>
-        <div class="recetas-split">
-          <div>
-            <h4>Productos estrella</h4>
-            <ul class="recetas-list" id="recetas-top-list"></ul>
+    <div class="recetas-section active" data-recetas-section="resumen">
+      <div class="recetas-summary-grid">
+        <div class="recetas-summary-main">
+          <div class="card recetas-hero compact">
+            <h3>Flujo simple de costeo</h3>
+            <p>Captura receta → costea con ABC → define precio por canal → decide con margen real.</p>
+            <div class="hero-grid">
+              <div class="hero-pill"><strong>Costeo real</strong>Incluye insumos, ABC, mermas y adiciones.</div>
+              <div class="hero-pill"><strong>Precio por canal</strong>Protege margen en delivery y combos.</div>
+              <div class="hero-pill"><strong>Rentabilidad clara</strong>Detecta estrellas y productos en riesgo.</div>
+            </div>
           </div>
-          <div>
-            <h4>Se venden pero no dejan</h4>
-            <ul class="recetas-list" id="recetas-low-list"></ul>
+
+          <div class="card" id="recetas-kpis-card">
+            <div class="card-title-flex">
+              <h3>Centro de control del menú</h3>
+              <span class="title-chip" id="recetas-health-chip">--</span>
+            </div>
+            <div class="recetas-kpi-grid" id="recetas-kpi-grid"></div>
+            <div class="recetas-meta" id="recetas-kpi-meta"></div>
+          </div>
+
+          <div class="card" id="recetas-insights-card">
+            <div class="card-title-flex">
+              <h3>Rentabilidad real (ventas)</h3>
+              <span class="title-chip">Menú completo</span>
+            </div>
+            <div class="recetas-split">
+              <div>
+                <h4>Productos estrella</h4>
+                <ul class="recetas-list" id="recetas-top-list"></ul>
+              </div>
+              <div>
+                <h4>Se venden pero no dejan</h4>
+                <ul class="recetas-list" id="recetas-low-list"></ul>
+              </div>
+            </div>
+            <small class="muted" id="recetas-insights-note"></small>
           </div>
         </div>
-        <small class="muted" id="recetas-insights-note"></small>
-      </div>
-      <div class="card" id="recetas-alertas-card">
-        <div class="card-title-flex">
-          <h3>Alertas automáticas</h3>
-          <span class="title-chip">Acción inmediata</span>
+
+        <div class="recetas-summary-side">
+          <div class="card" id="recetas-alertas-card">
+            <div class="card-title-flex">
+              <h3>Alertas automáticas</h3>
+              <span class="title-chip">Acción inmediata</span>
+            </div>
+            <ul class="recetas-list" id="recetas-alertas-list"></ul>
+          </div>
+          <div class="card" id="abc-breakeven"></div>
         </div>
-        <ul class="recetas-list" id="recetas-alertas-list"></ul>
       </div>
     </div>
 
-    <div class="chart-grid-2">
-      <div class="card" id="recetas-sim-card">
-        <h3>Simulador rápido (precio, canal y tamaño)</h3>
-        <div class="row">
-          <label class="grow">Receta<select id="sim-receta"></select></label>
-          <label>Tamaño<select id="sim-tamano"></select></label>
-          <label>Canal<select id="sim-canal"></select></label>
+    <div class="recetas-section" data-recetas-section="simulador">
+      <div class="chart-grid-2">
+        <div class="card" id="recetas-sim-card">
+          <h3>Simulador rápido (precio, canal y tamaño)</h3>
+          <div class="row">
+            <label class="grow">Receta<select id="sim-receta"></select></label>
+            <label>Tamaño<select id="sim-tamano"></select></label>
+            <label>Canal<select id="sim-canal"></select></label>
+          </div>
+          <div class="recetas-addon-grid" id="sim-adiciones"></div>
+          <div class="recetas-sim-output" id="sim-output"></div>
+          <div class="table-scroll">
+            <table class="table" id="tbl-precios-canales"><thead><tr><th>Canal</th><th>Multiplicador</th><th>Precio sugerido</th><th>Margen estimado</th></tr></thead><tbody></tbody></table>
+          </div>
+          <small class="muted">Usa los multiplicadores para proteger margen frente a comisiones y empaques.</small>
         </div>
-        <div class="recetas-addon-grid" id="sim-adiciones"></div>
-        <div class="recetas-sim-output" id="sim-output"></div>
-        <div class="table-scroll">
-          <table class="table" id="tbl-precios-canales"><thead><tr><th>Canal</th><th>Multiplicador</th><th>Precio sugerido</th><th>Margen estimado</th></tr></thead><tbody></tbody></table>
-        </div>
-        <small class="muted">Usa los multiplicadores para proteger margen frente a comisiones y empaques.</small>
-      </div>
-      <div class="card" id="recetas-canales-card">
-        <div class="card-title-flex">
-          <h3>Canales y reglas de precio</h3>
-          <span class="title-chip">Configurable</span>
-        </div>
-        <div class="toolbar">
-          <button class="btn" onclick="pricingCfg.nuevoCanal()">Nuevo canal</button>
-          <button class="btn" onclick="pricingCfg.reset()">Restaurar defaults</button>
-        </div>
-        <div class="table-scroll">
-          <table class="table" id="tbl-canales"><thead><tr><th>Canal</th><th>Multiplicador</th><th>Nota</th><th>Acciones</th></tr></thead><tbody></tbody></table>
-        </div>
-        <small class="muted">Multiplicadores sugeridos para cubrir comisión, empaques y mermas.</small>
       </div>
     </div>
 
-    <div class="chart-grid-2 tight">
+    <div class="recetas-section" data-recetas-section="config">
+      <div class="chart-grid-2">
+        <div class="card" id="recetas-canales-card">
+          <div class="card-title-flex">
+            <h3>Canales y reglas de precio</h3>
+            <span class="title-chip">Configurable</span>
+          </div>
+          <div class="toolbar">
+            <button class="btn" onclick="pricingCfg.nuevoCanal()">Nuevo canal</button>
+            <button class="btn" onclick="pricingCfg.reset()">Restaurar defaults</button>
+          </div>
+          <div class="table-scroll">
+            <table class="table" id="tbl-canales"><thead><tr><th>Canal</th><th>Multiplicador</th><th>Nota</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+          </div>
+          <small class="muted">Multiplicadores sugeridos para cubrir comisión, empaques y mermas.</small>
+        </div>
+      </div>
+
+      <div class="chart-grid-2 tight">
+        <div class="card">
+          <div class="card-title-flex">
+            <h3>Variantes de tamaño</h3>
+            <span class="title-chip">Costo + precio</span>
+          </div>
+          <div class="toolbar">
+            <button class="btn" onclick="pricingCfg.nuevoTamano()">Nuevo tamaño</button>
+          </div>
+          <div class="table-scroll">
+            <table class="table" id="tbl-variantes"><thead><tr><th>Tamaño</th><th>Factor costo</th><th>Factor precio</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title-flex">
+            <h3>Adiciones, CBD y adaptógenos</h3>
+            <span class="title-chip">Boosters</span>
+          </div>
+          <div class="toolbar">
+            <button class="btn" onclick="adiciones.nuevo()">Nueva adición</button>
+          </div>
+          <div class="table-scroll">
+            <table class="table" id="tbl-adiciones"><thead><tr><th>Adición</th><th>Tipo</th><th>Costo extra</th><th>Precio extra</th><th>Margen</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="abc-config-card"></div>
+    </div>
+
+    <div class="recetas-section" data-recetas-section="recetas">
+      <div id="receta-form" class="card hidden"></div>
       <div class="card">
-        <div class="card-title-flex">
-          <h3>Variantes de tamaño</h3>
-          <span class="title-chip">Costo + precio</span>
-        </div>
-        <div class="toolbar">
-          <button class="btn" onclick="pricingCfg.nuevoTamano()">Nuevo tamaño</button>
+        <h3>Recetas</h3>
+        <div class="toolbar recetas-filters">
+          <label class="grow">Buscar receta<input id="rc-buscar-table" class="has-search" type="search" placeholder="Bebidas o alimentos"></label>
+          <label>Filtro<select id="rc-filtro"><option value="all">Todas</option><option value="bajo">Bajo margen</option><option value="sin-precio">Sin precio</option><option value="sin-costo">Sin costo</option><option value="sin-categoria">Sin categoría</option></select></label>
+          <label>Ordenar<select id="rc-sort"><option value="nombre">Nombre</option><option value="margen">Margen real</option><option value="costo">Costo/porción</option><option value="precio">Precio sugerido</option></select></label>
         </div>
         <div class="table-scroll">
-          <table class="table" id="tbl-variantes"><thead><tr><th>Tamaño</th><th>Factor costo</th><th>Factor precio</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+          <table class="table" id="tbl-recetas"><thead><tr><th>Nombre</th><th>Categoría</th><th>Porciones</th><th>Insumos/porción</th><th>ABC/porción</th><th>Costo/porción</th><th>Precio venta</th><th>Precio sugerido</th><th>Margen real</th><th>Acciones</th></tr></thead><tbody></tbody></table>
         </div>
       </div>
+    </div>
+
+    <div class="recetas-section" data-recetas-section="insumos">
+      <div id="costeo-form" class="card hidden"></div>
       <div class="card">
-        <div class="card-title-flex">
-          <h3>Adiciones, CBD y adaptógenos</h3>
-          <span class="title-chip">Boosters</span>
-        </div>
         <div class="toolbar">
-          <button class="btn" onclick="adiciones.nuevo()">Nueva adición</button>
+          <button class="btn" onclick="costosInsumos.nuevo()">Nuevo insumo (costo)</button>
+          <label class="grow">Buscar insumo<input id="rc-insumos-buscar" class="has-search" type="search" placeholder="Nombre o palabra clave"></label>
         </div>
+        <h3>Insumos (costos para recetas)</h3>
         <div class="table-scroll">
-          <table class="table" id="tbl-adiciones"><thead><tr><th>Adición</th><th>Tipo</th><th>Costo extra</th><th>Precio extra</th><th>Margen</th><th>Acciones</th></tr></thead><tbody></tbody></table>
+          <table class="table" id="tbl-costos"><thead><tr><th>Insumo</th><th>Proveedor</th><th>Unidad</th><th>Costo unitario</th><th>Acciones</th></tr></thead><tbody></tbody></table>
         </div>
       </div>
     </div>
 
-    <div class="card" id="recetas-architecture">
-      <h3>Propuesta de arquitectura del sistema</h3>
-      <div class="recetas-flow" style="margin-bottom:10px">
-        <span class="flow-step">Insumos + proveedores</span>
-        <span class="flow-step">Receta base</span>
-        <span class="flow-step">ABC + mermas</span>
-        <span class="flow-step">Costo real</span>
-        <span class="flow-step">Precio base</span>
-        <span class="flow-step">Canal + tamaño + adiciones</span>
-        <span class="flow-step">Margen real</span>
-        <span class="flow-step">Rentabilidad + decisiones</span>
-      </div>
-      <div class="recetas-model-grid">
-        <div class="recetas-model-card">
-          <h4>Captura</h4>
-          <ul>
-            <li>Recetas con categoría, tiempo y porciones.</li>
-            <li>Adiciones con costo y margen objetivo.</li>
-            <li>Plantillas por familia de productos.</li>
+    <div class="recetas-section" data-recetas-section="guia">
+      <details class="panel-block" id="recetas-knowledge">
+        <summary>Guía estratégica y recomendaciones (opcional)</summary>
+        <div class="card" id="recetas-architecture">
+          <h3>Propuesta de arquitectura del sistema</h3>
+          <div class="recetas-flow" style="margin-bottom:10px">
+            <span class="flow-step">Insumos + proveedores</span>
+            <span class="flow-step">Receta base</span>
+            <span class="flow-step">ABC + mermas</span>
+            <span class="flow-step">Costo real</span>
+            <span class="flow-step">Precio base</span>
+            <span class="flow-step">Canal + tamaño + adiciones</span>
+            <span class="flow-step">Margen real</span>
+            <span class="flow-step">Rentabilidad + decisiones</span>
+          </div>
+          <div class="recetas-model-grid">
+            <div class="recetas-model-card">
+              <h4>Captura</h4>
+              <ul>
+                <li>Recetas con categoría, tiempo y porciones.</li>
+                <li>Adiciones con costo y margen objetivo.</li>
+                <li>Plantillas por familia de productos.</li>
+              </ul>
+            </div>
+            <div class="recetas-model-card">
+              <h4>Motor de costos</h4>
+              <ul>
+                <li>Costos directos + ABC por minuto.</li>
+                <li>Mermas y empaques visibles.</li>
+                <li>Historial de cambios por insumo.</li>
+              </ul>
+            </div>
+            <div class="recetas-model-card">
+              <h4>Motor de precios</h4>
+              <ul>
+                <li>Precio base por margen objetivo.</li>
+                <li>Ajustes por canal y tamaño.</li>
+                <li>Reglas para combos y promociones.</li>
+              </ul>
+            </div>
+            <div class="recetas-model-card">
+              <h4>Analítica</h4>
+              <ul>
+                <li>Rentabilidad por producto, categoría y menú.</li>
+                <li>Productos estrella vs. erosión de margen.</li>
+                <li>Impacto real de adiciones.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="chart-grid-2 tight">
+          <div class="card" id="recetas-modelo">
+            <h3>Modelo de datos recomendado</h3>
+            <div class="recetas-model-grid">
+              <div class="recetas-model-card">
+                <h4>Insumos</h4>
+                <ul>
+                  <li>unidad, costo, proveedor, merma %</li>
+                  <li>existencia, mínimos, sustitutos</li>
+                </ul>
+              </div>
+              <div class="recetas-model-card">
+                <h4>Recetas</h4>
+                <ul>
+                  <li>categoría, porciones, tiempo prep</li>
+                  <li>ingredientes + cantidades + unidad</li>
+                </ul>
+              </div>
+              <div class="recetas-model-card">
+                <h4>Variantes</h4>
+                <ul>
+                  <li>tamaño, factor costo, factor precio</li>
+                  <li>topping / CBD / adaptógeno</li>
+                </ul>
+              </div>
+              <div class="recetas-model-card">
+                <h4>Costos fijos</h4>
+                <ul>
+                  <li>ABC mensual + minutos productivos</li>
+                  <li>costos por sucursal</li>
+                </ul>
+              </div>
+              <div class="recetas-model-card">
+                <h4>Precios y márgenes</h4>
+                <ul>
+                  <li>precio base + canal + combo</li>
+                  <li>margen objetivo y margen real</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="card" id="recetas-flujos">
+            <h3>Simplificación de flujos + nuevas vistas</h3>
+            <ul class="recetas-list">
+              <li><strong>Captura express</strong><small>Nombre + categoría + 3 insumos clave → se completa después.</small></li>
+              <li><strong>Duplicar receta</strong><small>Clonar y editar solo cambios (tamaño, leche, topping).</small></li>
+              <li><strong>Vista de menú rentable</strong><small>Semáforo: verde rentable, rojo erosiona margen.</small></li>
+              <li><strong>Vista “Impacto de adiciones”</strong><small>Cuánto aporta cada extra vs. su costo real.</small></li>
+              <li><strong>Vista de combos</strong><small>Precio bundle, margen y canibalización.</small></li>
+            </ul>
+          </div>
+        </div>
+        <div class="chart-grid-2 tight">
+          <div class="card" id="recetas-kpis-alertas">
+            <h3>KPIs imprescindibles + alertas recomendadas</h3>
+            <ul class="recetas-list">
+              <li><strong>Margen real por producto</strong><small>Alerta si cae debajo del objetivo.</small></li>
+              <li><strong>Utilidad por categoría</strong><small>Detecta categorías que consumen tiempo sin margen.</small></li>
+              <li><strong>Top ventas vs. top utilidad</strong><small>Detecta productos que se venden pero no dejan.</small></li>
+              <li><strong>Impacto de adiciones</strong><small>Si el extra no deja margen, se ajusta.</small></li>
+              <li><strong>Breakeven mensual</strong><small>Ventas mínimas para cubrir costos fijos.</small></li>
+            </ul>
+          </div>
+          <div class="card" id="recetas-avanzado">
+            <h3>Sugerencias avanzadas (nivel pro)</h3>
+            <ul class="recetas-list">
+              <li><strong>Simulador de escenarios</strong><small>Subir precios +2% y ver utilidad esperada.</small></li>
+              <li><strong>Motor de sustituciones</strong><small>Reemplazo de insumos con mismo sabor y menor costo.</small></li>
+              <li><strong>Optimización por canal</strong><small>Precio distinto en delivery para mantener margen.</small></li>
+              <li><strong>Alertas por merma</strong><small>Detectar recetas con desperdicio alto.</small></li>
+              <li><strong>Indicador de complejidad</strong><small>Minutos por bebida para decidir qué simplificar.</small></li>
+            </ul>
+          </div>
+        </div>
+        <div class="card" id="recetas-no-negociable">
+          <h3>NO negociable en un sistema de costeo serio</h3>
+          <ul class="recetas-list">
+            <li><strong>Costeo real por porción</strong><small>Incluye insumos, ABC, empaques y mermas.</small></li>
+            <li><strong>Precio por canal</strong><small>Delivery nunca usa el mismo precio que tienda.</small></li>
+            <li><strong>Margen real visible</strong><small>Producto sin margen no se vende a ciegas.</small></li>
+            <li><strong>Rastro de cambios</strong><small>Cada ajuste deja historial para comparar.</small></li>
+            <li><strong>Captura rápida</strong><small>Operación diaria sin fricción para el equipo.</small></li>
           </ul>
         </div>
-        <div class="recetas-model-card">
-          <h4>Motor de costos</h4>
-          <ul>
-            <li>Costos directos + ABC por minuto.</li>
-            <li>Mermas y empaques visibles.</li>
-            <li>Historial de cambios por insumo.</li>
-          </ul>
-        </div>
-        <div class="recetas-model-card">
-          <h4>Motor de precios</h4>
-          <ul>
-            <li>Precio base por margen objetivo.</li>
-            <li>Ajustes por canal y tamaño.</li>
-            <li>Reglas para combos y promociones.</li>
-          </ul>
-        </div>
-        <div class="recetas-model-card">
-          <h4>Analítica</h4>
-          <ul>
-            <li>Rentabilidad por producto, categoría y menú.</li>
-            <li>Productos estrella vs. erosión de margen.</li>
-            <li>Impacto real de adiciones.</li>
-          </ul>
-        </div>
-      </div>
+      </details>
     </div>
-
-    <div class="chart-grid-2 tight">
-      <div class="card" id="recetas-modelo">
-        <h3>Modelo de datos recomendado</h3>
-        <div class="recetas-model-grid">
-          <div class="recetas-model-card">
-            <h4>Insumos</h4>
-            <ul>
-              <li>unidad, costo, proveedor, merma %</li>
-              <li>existencia, mínimos, sustitutos</li>
-            </ul>
-          </div>
-          <div class="recetas-model-card">
-            <h4>Recetas</h4>
-            <ul>
-              <li>categoría, porciones, tiempo prep</li>
-              <li>ingredientes + cantidades + unidad</li>
-            </ul>
-          </div>
-          <div class="recetas-model-card">
-            <h4>Variantes</h4>
-            <ul>
-              <li>tamaño, factor costo, factor precio</li>
-              <li>topping / CBD / adaptógeno</li>
-            </ul>
-          </div>
-          <div class="recetas-model-card">
-            <h4>Costos fijos</h4>
-            <ul>
-              <li>ABC mensual + minutos productivos</li>
-              <li>costos por sucursal</li>
-            </ul>
-          </div>
-          <div class="recetas-model-card">
-            <h4>Precios y márgenes</h4>
-            <ul>
-              <li>precio base + canal + combo</li>
-              <li>margen objetivo y margen real</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-      <div class="card" id="recetas-flujos">
-        <h3>Simplificación de flujos + nuevas vistas</h3>
-        <ul class="recetas-list">
-          <li><strong>Captura express</strong><small>Nombre + categoría + 3 insumos clave → se completa después.</small></li>
-          <li><strong>Duplicar receta</strong><small>Clonar y editar solo cambios (tamaño, leche, topping).</small></li>
-          <li><strong>Vista de menú rentable</strong><small>Semáforo: verde rentable, rojo erosiona margen.</small></li>
-          <li><strong>Vista “Impacto de adiciones”</strong><small>Cuánto aporta cada extra vs. su costo real.</small></li>
-          <li><strong>Vista de combos</strong><small>Precio bundle, margen y canibalización.</small></li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="chart-grid-2 tight">
-      <div class="card" id="recetas-kpis-alertas">
-        <h3>KPIs imprescindibles + alertas recomendadas</h3>
-        <ul class="recetas-list">
-          <li><strong>Margen real por producto</strong><small>Alerta si cae debajo del objetivo.</small></li>
-          <li><strong>Utilidad por categoría</strong><small>Detecta categorías que consumen tiempo sin margen.</small></li>
-          <li><strong>Top ventas vs. top utilidad</strong><small>Detecta productos que se venden pero no dejan.</small></li>
-          <li><strong>Impacto de adiciones</strong><small>Si el extra no deja margen, se ajusta.</small></li>
-          <li><strong>Breakeven mensual</strong><small>Ventas mínimas para cubrir costos fijos.</small></li>
-        </ul>
-      </div>
-      <div class="card" id="recetas-avanzado">
-        <h3>Sugerencias avanzadas (nivel pro)</h3>
-        <ul class="recetas-list">
-          <li><strong>Simulador de escenarios</strong><small>Subir precios +2% y ver utilidad esperada.</small></li>
-          <li><strong>Motor de sustituciones</strong><small>Reemplazo de insumos con mismo sabor y menor costo.</small></li>
-          <li><strong>Optimización por canal</strong><small>Precio distinto en delivery para mantener margen.</small></li>
-          <li><strong>Alertas por merma</strong><small>Detectar recetas con desperdicio alto.</small></li>
-          <li><strong>Indicador de complejidad</strong><small>Minutos por bebida para decidir qué simplificar.</small></li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="card" id="recetas-no-negociable">
-      <h3>NO negociable en un sistema de costeo serio</h3>
-      <ul class="recetas-list">
-        <li><strong>Costeo real por porción</strong><small>Incluye insumos, ABC, empaques y mermas.</small></li>
-        <li><strong>Precio por canal</strong><small>Delivery nunca usa el mismo precio que tienda.</small></li>
-        <li><strong>Margen real visible</strong><small>Producto sin margen no se vende a ciegas.</small></li>
-        <li><strong>Rastro de cambios</strong><small>Cada ajuste deja historial para comparar.</small></li>
-        <li><strong>Captura rápida</strong><small>Operación diaria sin fricción para el equipo.</small></li>
-      </ul>
-    </div>
-
-    <div class="card" id="abc-config-card"></div>
-    <div class="card" id="abc-breakeven"></div>
-    <div id="receta-form" class="card hidden"></div>
-    <div class="card">
-      <h3>Recetas</h3>
-      <div class="toolbar">
-        <label class="grow">Buscar receta<input id="rc-buscar-table" class="has-search" type="search" placeholder="Bebidas o alimentos"></label>
-      </div>
-      <div class="table-scroll">
-        <table class="table" id="tbl-recetas"><thead><tr><th>Nombre</th><th>Categoría</th><th>Porciones</th><th>Insumos/porción</th><th>ABC/porción</th><th>Costo/porción</th><th>Precio venta</th><th>Precio sugerido</th><th>Margen real</th><th>Acciones</th></tr></thead><tbody></tbody></table>
-      </div>
-    </div>
-    <div class="card">
-      <div class="toolbar">
-        <button class="btn" onclick="costosInsumos.nuevo()">Nuevo insumo (costo)</button>
-        <label class="grow">Buscar insumo<input id="rc-insumos-buscar" class="has-search" type="search" placeholder="Nombre o palabra clave"></label>
-      </div>
-      <h3>Insumos (costos para recetas)</h3>
-      <table class="table" id="tbl-costos"><thead><tr><th>Insumo</th><th>Proveedor</th><th>Unidad</th><th>Costo unitario</th><th>Acciones</th></tr></thead><tbody></tbody></table>
-    </div>
-    <div id="costeo-form" class="card hidden"></div>
   </section>
 
   <section id="panel-nomina-charts" class="panel hidden"></section>
@@ -1735,6 +1772,31 @@ function initTheme(){
 function toggleTheme(){
   const current=document.body.classList.contains('light-mode')?'light':'dark';
   applyTheme(current==='light'?'dark':'light');
+}
+
+// Recetas: navegación por tabs
+const RECETAS_TAB_KEY='bm_recetas_tab';
+function setRecetasTab(tab){
+  const panel=document.getElementById('panel-recetas');
+  if(!panel) return;
+  const tabs=[...panel.querySelectorAll('[data-recetas-tab]')];
+  const sections=[...panel.querySelectorAll('[data-recetas-section]')];
+  if(!tabs.length || !sections.length) return;
+  tabs.forEach(btn=> btn.classList.toggle('active', btn.dataset.recetasTab===tab));
+  sections.forEach(sec=> sec.classList.toggle('active', sec.dataset.recetasSection===tab));
+  localStorage.setItem(RECETAS_TAB_KEY, tab);
+}
+function initRecetasTabs(){
+  const panel=document.getElementById('panel-recetas');
+  if(!panel || panel.dataset.recetasTabsReady==='1') return;
+  const tabs=[...panel.querySelectorAll('[data-recetas-tab]')];
+  if(!tabs.length) return;
+  panel.dataset.recetasTabsReady='1';
+  tabs.forEach(btn=> btn.addEventListener('click', ()=> setRecetasTab(btn.dataset.recetasTab)));
+  const saved=localStorage.getItem(RECETAS_TAB_KEY);
+  const fallback=tabs[0]?.dataset?.recetasTab || 'resumen';
+  const initial=tabs.some(t=> t.dataset.recetasTab===saved) ? saved : fallback;
+  setRecetasTab(initial);
 }
 
 // tiny debounce
@@ -3255,6 +3317,7 @@ const recetas={
   nextFolio(){ const k=LocalDB.key('receta_seq'); const cur=Number(localStorage.getItem(k)||'0')+1; localStorage.setItem(k,String(cur)); return cur; },
   nueva(){
     this._editId=null;
+    if(typeof setRecetasTab==='function'){ setRecetasTab('recetas'); }
     const el=document.getElementById('receta-form'); el.classList.remove('hidden');
     el.innerHTML=`
       <div class="row">
@@ -3305,10 +3368,8 @@ const recetas={
         <button class="btn primary" onclick="recetas.guardar()">Guardar receta</button>
         <button class="btn" onclick="document.querySelector('#tbl-ing')?.scrollIntoView({behavior:'smooth',block:'start'})">Editar insumos</button>
         <button class="btn" onclick="document.getElementById('r-tprep')?.focus()">Editar tiempos</button>
-        <button class="btn" onclick="document.getElementById('abc-config-card')?.scrollIntoView({behavior:'smooth',block:'start'})">Actualizar ABC</button>
+        <button class="btn" onclick="if(typeof setRecetasTab==='function'){ setRecetasTab('config'); } document.getElementById('abc-config-card')?.scrollIntoView({behavior:'smooth',block:'start'})">Actualizar ABC</button>
         <div class="grow"></div>
-        <button class="btn" onclick="recetas.sharePDF(recetas._editId||null)">Compartir PDF</button>
-        <button class="btn" onclick="recetas.shareExcel(recetas._editId||null)">Exportar Excel</button>
         <button class="btn ghost" onclick="document.getElementById('receta-form').classList.add('hidden')">Cerrar</button>
       </div>
     `;
@@ -3361,6 +3422,7 @@ const recetas={
   },
   editar(id){
     const r=LocalDB.byId(Data.col.recetas,id); if(!r) return; this._editId=id;
+    if(typeof setRecetasTab==='function'){ setRecetasTab('recetas'); }
     const el=document.getElementById('receta-form'); el.classList.remove('hidden');
     const ins=Data.get(Data.col.insumos_costeo);
     el.innerHTML=`
@@ -3412,10 +3474,8 @@ const recetas={
         <button class="btn primary" onclick="recetas.guardar()">Actualizar receta</button>
         <button class="btn" onclick="document.querySelector('#tbl-ing')?.scrollIntoView({behavior:'smooth',block:'start'})">Editar insumos</button>
         <button class="btn" onclick="document.getElementById('r-tprep')?.focus()">Editar tiempos</button>
-        <button class="btn" onclick="document.getElementById('abc-config-card')?.scrollIntoView({behavior:'smooth',block:'start'})">Actualizar ABC</button>
+        <button class="btn" onclick="if(typeof setRecetasTab==='function'){ setRecetasTab('config'); } document.getElementById('abc-config-card')?.scrollIntoView({behavior:'smooth',block:'start'})">Actualizar ABC</button>
         <div class="grow"></div>
-        <button class="btn" onclick="recetas.sharePDF('${id}')">Compartir PDF</button>
-        <button class="btn" onclick="recetas.shareExcel('${id}')">Exportar Excel</button>
         <button class="btn ghost" onclick="document.getElementById('receta-form').classList.add('hidden')">Cerrar</button>
       </div>
     `;
@@ -6254,12 +6314,8 @@ function renderRecetas(){
   renderRecetasInsights();
   renderRecetasSimulator();
   const tb=document.querySelector('#tbl-recetas tbody'); const rows=Data.get(Data.col.recetas);
-  const searchMain=document.getElementById('rc-buscar');
   const searchTable=document.getElementById('rc-buscar-table');
-  if(searchTable && searchMain && searchTable.value!==searchMain.value && document.activeElement!==searchTable){
-    searchTable.value=searchMain.value||'';
-  }
-  const q=(searchMain?.value||'').toLowerCase().trim();
+  const q=(searchTable?.value||'').toLowerCase().trim();
   const filtro=document.getElementById('rc-filtro')?.value||'all';
   const orden=document.getElementById('rc-sort')?.value||'nombre';
   let list = q? rows.filter(r=> (r.nombre||'').toLowerCase().includes(q) || (r.categoria||'').toLowerCase().includes(q)) : [...rows];
@@ -6288,7 +6344,7 @@ function renderRecetas(){
     const precioSug=metrics.precioSug;
     const marginClass=precio<=0? '' : (metrics.margenReal<0?'margen-critico':(metrics.margenReal < (metrics.margenObj-2)?'margen-bajo':'margen-ok'));
     const marginLabel=precio>0? `${fmt.num(metrics.margenReal,1)}%`:'--';
-    return `<tr><td>${r.nombre}</td><td>${r.categoria||''}</td><td>${r.porciones||1}</td><td>${fmt.money(mp)}</td><td>${fmt.money(abcp)}</td><td>${fmt.money(costo)}</td><td>${fmt.money(precioVenta||0)}</td><td>${fmt.money(precioSug||0)}</td><td class="${marginClass}">${marginLabel}</td><td><button class='btn' onclick="recetas.editar('${r.id}')">Editar</button> <button class='btn' onclick="recetas.duplicar('${r.id}')">Duplicar</button> <button class='btn' onclick="recetas.sharePDF('${r.id}')">PDF</button> <button class='btn' onclick="recetas.shareExcel('${r.id}')">Excel</button> <button class='btn danger' onclick="recetas.eliminar('${r.id}')">Eliminar</button></td></tr>`;
+    return `<tr><td>${r.nombre}</td><td>${r.categoria||''}</td><td>${r.porciones||1}</td><td>${fmt.money(mp)}</td><td>${fmt.money(abcp)}</td><td>${fmt.money(costo)}</td><td>${fmt.money(precioVenta||0)}</td><td>${fmt.money(precioSug||0)}</td><td class="${marginClass}">${marginLabel}</td><td><button class='btn' onclick="recetas.editar('${r.id}')">Editar</button> <button class='btn' onclick="recetas.duplicar('${r.id}')">Duplicar</button> <button class='btn danger' onclick="recetas.eliminar('${r.id}')">Eliminar</button></td></tr>`;
   }).join('');
 }
 
@@ -6815,12 +6871,7 @@ function renderAll(){ renderDashboard(); renderVentas(); renderRecetas(); render
 
 // Filtro de recetas en vivo
 document.addEventListener('input', (e)=>{
-  if(e.target && e.target.id==='rc-buscar'){ renderRecetas(); }
-  if(e.target && e.target.id==='rc-buscar-table'){
-    const main=document.getElementById('rc-buscar');
-    if(main) main.value=e.target.value||'';
-    renderRecetas();
-  }
+  if(e.target && e.target.id==='rc-buscar-table'){ renderRecetas(); }
   if(e.target && e.target.id==='rc-insumos-buscar'){ renderCostosInsumos(); }
   if(e.target && e.target.id==='ins-buscar'){ renderInventario(); }
 });
@@ -7031,6 +7082,7 @@ async function bootApp(){
     appBooted=true;
   }
   renderAll();
+  initRecetasTabs();
 }
 
 // Persist cfg on change
