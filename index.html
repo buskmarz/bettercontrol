@@ -2522,11 +2522,16 @@ function renderInsumoOptions(select, items, query, preferredId){
     select.innerHTML="<option value='' disabled>Sin resultados</option>";
     return;
   }
+  const prev=select.value;
   select.innerHTML=list.map(i=>`<option value="${i.id}">${i.nombre}</option>`).join('');
   const keepId=preferredId && list.some(i=>i.id===preferredId) ? preferredId : select.value;
   if(keepId && list.some(i=>i.id===keepId)) select.value=keepId;
   else select.value=list[0].id;
-  select.dispatchEvent(new Event('change'));
+  if(prev !== select.value){
+    select.dataset.bmcSearchSync='1';
+    select.dispatchEvent(new Event('change'));
+    delete select.dataset.bmcSearchSync;
+  }
 }
 
 function setupInsumoSearch(row, items){
@@ -2538,6 +2543,7 @@ function setupInsumoSearch(row, items){
   input.addEventListener('input', run);
   input.addEventListener('focus', run);
   select.addEventListener('change', ()=>{
+    if(select.dataset.bmcSearchSync==='1') return;
     if(input.value){
       input.value='';
       renderInsumoOptions(select, source, '', select.value);
