@@ -1005,6 +1005,9 @@ body.light-mode #panel-dashboard canvas{background:#FFFFFF;border:1px solid #e5e
     <div id="receta-form" class="card hidden"></div>
     <div class="card">
       <h3>Recetas</h3>
+      <div class="toolbar">
+        <label class="grow">Buscar receta<input id="rc-buscar-table" class="has-search" type="search" placeholder="Bebidas o alimentos"></label>
+      </div>
       <div class="table-scroll">
         <table class="table" id="tbl-recetas"><thead><tr><th>Nombre</th><th>Categoría</th><th>Porciones</th><th>Insumos/porción</th><th>ABC/porción</th><th>Costo/porción</th><th>Precio venta</th><th>Precio sugerido</th><th>Margen real</th><th>Acciones</th></tr></thead><tbody></tbody></table>
       </div>
@@ -3434,7 +3437,21 @@ const recetas={
     recetas.recalcCosteo?.();
   },
   eliminar(id){ if(!confirm('¿Eliminar receta?')) return; Data.get(Data.col.recetas_ingredientes).filter(i=> i.recetaId===id).forEach(i=> Data.del(Data.col.recetas_ingredientes, i.id)); Data.del(Data.col.recetas,id); notify('Receta eliminada','success'); renderRecetas(); }
-  ,duplicar(id){ const r=LocalDB.byId(Data.col.recetas,id); if(!r) return; const nombre=prompt('Nombre del duplicado', (r.nombre||'')+' (copy)')||((r.nombre||'')+' (copy)'); const base={...r, id:undefined, nombre}; const folio=String(this.nextFolio()); const n=Data.add(Data.col.recetas, {...base, folio}); const ings=Data.get(Data.col.recetas_ingredientes).filter(i=> i.recetaId===id); ings.forEach(i=> Data.add(Data.col.recetas_ingredientes,{...i, id:undefined, recetaId:n.id})); notify('Receta duplicada','success'); recetasCalcularCosto(); renderRecetas(); }
+  ,duplicar(id){
+    const r=LocalDB.byId(Data.col.recetas,id); if(!r) return;
+    const nombre=prompt('Nombre del duplicado', (r.nombre||'')+' (copy)')||((r.nombre||'')+' (copy)');
+    const base={...r, nombre};
+    delete base.id;
+    const folio=String(this.nextFolio());
+    const n=Data.add(Data.col.recetas, {...base, folio});
+    const ings=Data.get(Data.col.recetas_ingredientes).filter(i=> i.recetaId===id);
+    ings.forEach(i=>{
+      const clone={...i, recetaId:n.id};
+      delete clone.id;
+      Data.add(Data.col.recetas_ingredientes, clone);
+    });
+    notify('Receta duplicada','success'); recetasCalcularCosto(); renderRecetas();
+  }
   ,_collectFromForm(){
     const name=document.getElementById('r-nombre')?.value||'';
     const categoria=document.getElementById('r-cat')?.value||'';
@@ -6227,7 +6244,12 @@ function renderRecetas(){
   renderRecetasInsights();
   renderRecetasSimulator();
   const tb=document.querySelector('#tbl-recetas tbody'); const rows=Data.get(Data.col.recetas);
-  const q=(document.getElementById('rc-buscar')?.value||'').toLowerCase().trim();
+  const searchMain=document.getElementById('rc-buscar');
+  const searchTable=document.getElementById('rc-buscar-table');
+  if(searchTable && searchMain && searchTable.value!==searchMain.value && document.activeElement!==searchTable){
+    searchTable.value=searchMain.value||'';
+  }
+  const q=(searchMain?.value||'').toLowerCase().trim();
   const filtro=document.getElementById('rc-filtro')?.value||'all';
   const orden=document.getElementById('rc-sort')?.value||'nombre';
   let list = q? rows.filter(r=> (r.nombre||'').toLowerCase().includes(q) || (r.categoria||'').toLowerCase().includes(q)) : [...rows];
@@ -6784,6 +6806,11 @@ function renderAll(){ renderDashboard(); renderVentas(); renderRecetas(); render
 // Filtro de recetas en vivo
 document.addEventListener('input', (e)=>{
   if(e.target && e.target.id==='rc-buscar'){ renderRecetas(); }
+  if(e.target && e.target.id==='rc-buscar-table'){
+    const main=document.getElementById('rc-buscar');
+    if(main) main.value=e.target.value||'';
+    renderRecetas();
+  }
   if(e.target && e.target.id==='rc-insumos-buscar'){ renderCostosInsumos(); }
   if(e.target && e.target.id==='ins-buscar'){ renderInventario(); }
 });
