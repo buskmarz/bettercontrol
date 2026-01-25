@@ -6972,6 +6972,38 @@ function runMigrations(){
       localStorage.setItem(doneKeyFix,'1');
     }
   }catch(e){}
+  // Migración: asegurar IDs válidos en recetas (para editar/eliminar duplicados)
+  try{
+    const doneKeyRec=LocalDB.key('recetas_id_fix_v1');
+    if(!localStorage.getItem(doneKeyRec)){
+      const list=Data.get(Data.col.recetas)||[];
+      let changed=false;
+      const seen=new Set();
+      const remap=new Map();
+      list.forEach(r=>{
+        const id=r.id;
+        const invalid = id==null || id==='' || id==='undefined' || seen.has(id);
+        if(invalid){
+          const newId=uid();
+          if(id!=null && id!=='' && id!=='undefined'){ remap.set(id, newId); }
+          r.id=newId;
+          changed=true;
+        }
+        seen.add(r.id);
+      });
+      if(changed){ LocalDB.set(Data.col.recetas, list); }
+      if(remap.size){
+        const ings=Data.get(Data.col.recetas_ingredientes)||[];
+        let ingChanged=false;
+        ings.forEach(i=>{
+          const mapped=remap.get(i.recetaId);
+          if(mapped){ i.recetaId=mapped; ingChanged=true; }
+        });
+        if(ingChanged){ LocalDB.set(Data.col.recetas_ingredientes, ings); }
+      }
+      localStorage.setItem(doneKeyRec,'1');
+    }
+  }catch(e){}
   // Migración: agregar precioVenta a recetas existentes
   try{
     const doneKey4=LocalDB.key('recetas_precio_venta_v1');
