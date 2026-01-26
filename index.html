@@ -3694,31 +3694,40 @@ const recetas={
       ${rows}
     </div>`;
     const wrap=document.createElement('div');
-    wrap.style.position='fixed';
-    wrap.style.left='-10000px';
+    wrap.style.position='absolute';
+    wrap.style.left='0';
     wrap.style.top='0';
     wrap.style.width='794px';
     wrap.style.background='#fff';
     wrap.style.color='#111';
-    wrap.style.opacity='1';
+    wrap.style.opacity='0.01';
     wrap.style.pointerEvents='none';
-    wrap.style.zIndex='0';
+    wrap.style.zIndex='-1';
+    wrap.style.overflow='visible';
     wrap.setAttribute('aria-hidden','true');
     wrap.innerHTML=content;
     document.body.appendChild(wrap);
     const filename=`Recetario_${todayISO()}.pdf`;
     if(window.html2pdf){
-      requestAnimationFrame(()=>{
-        setTimeout(()=>{
-          window.html2pdf().set({
-            margin:8,
-            filename,
-            image:{type:'jpeg',quality:0.98},
-            html2canvas:{scale:2,useCORS:true,backgroundColor:'#fff',windowWidth:wrap.scrollWidth,windowHeight:wrap.scrollHeight},
-            jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
-          }).from(wrap).save().then(()=> wrap.remove()).catch(()=> wrap.remove());
-        }, 60);
-      });
+      const runExport=()=>{
+        const rect=wrap.getBoundingClientRect();
+        const width=Math.max(Math.ceil(rect.width), 794);
+        const height=Math.max(Math.ceil(rect.height), wrap.scrollHeight || 1);
+        window.html2pdf().set({
+          margin:8,
+          filename,
+          image:{type:'jpeg',quality:0.98},
+          html2canvas:{scale:2,useCORS:true,backgroundColor:'#fff',windowWidth:width,windowHeight:height,scrollX:0,scrollY:0},
+          jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
+        }).from(wrap).save().then(()=> wrap.remove()).catch(()=>{
+          wrap.remove();
+          const w=window.open('about:blank','_blank');
+          w.document.write(`<!doctype html><title>${filename}</title><body>${content}<script>setTimeout(()=>window.print(),150)<\/script></body>`);
+          w.document.close();
+        });
+      };
+      const ready=(document.fonts && document.fonts.ready)? document.fonts.ready : Promise.resolve();
+      ready.then(()=> requestAnimationFrame(()=> setTimeout(runExport, 80)));
     } else {
       const w=window.open('about:blank','_blank');
       w.document.write(`<!doctype html><title>${filename}</title><body>${content}<script>setTimeout(()=>window.print(),150)<\/script></body>`);
