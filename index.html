@@ -3695,19 +3695,29 @@ const recetas={
     </div>`;
     const wrap=document.createElement('div');
     wrap.style.position='fixed';
-    wrap.style.left='-10000px';
+    wrap.style.left='0';
     wrap.style.top='0';
+    wrap.style.width='794px';
+    wrap.style.background='#fff';
+    wrap.style.color='#111';
+    wrap.style.opacity='0';
+    wrap.style.pointerEvents='none';
+    wrap.style.zIndex='-1';
     wrap.innerHTML=content;
     document.body.appendChild(wrap);
     const filename=`Recetario_${todayISO()}.pdf`;
     if(window.html2pdf){
-      window.html2pdf().set({
-        margin:8,
-        filename,
-        image:{type:'jpeg',quality:0.98},
-        html2canvas:{scale:2},
-        jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
-      }).from(wrap).save().then(()=> wrap.remove()).catch(()=> wrap.remove());
+      requestAnimationFrame(()=>{
+        setTimeout(()=>{
+          window.html2pdf().set({
+            margin:8,
+            filename,
+            image:{type:'jpeg',quality:0.98},
+            html2canvas:{scale:2,useCORS:true},
+            jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
+          }).from(wrap).save().then(()=> wrap.remove()).catch(()=> wrap.remove());
+        }, 60);
+      });
     } else {
       const w=window.open('about:blank','_blank');
       w.document.write(`<!doctype html><title>${filename}</title><body>${content}<script>setTimeout(()=>window.print(),150)<\/script></body>`);
