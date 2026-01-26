@@ -914,6 +914,7 @@ body.light-mode #panel-dashboard canvas{background:#FFFFFF;border:1px solid #e5e
       <div class="card">
         <div class="toolbar">
           <button class="btn" onclick="costosInsumos.nuevo()">Nuevo insumo (costo)</button>
+          <button class="btn" onclick="costosInsumos.exportAllSimple()">Exportar insumos</button>
           <label class="grow">Buscar insumo<input id="rc-insumos-buscar" class="has-search" type="search" placeholder="Nombre o palabra clave"></label>
         </div>
         <h3>Insumos (costos para recetas)</h3>
@@ -3889,6 +3890,111 @@ const costosInsumos={
       </div>
       <div class='toolbar'><button class='btn primary' onclick="costosInsumos.actualizar('${id}')">Actualizar</button> <button class='btn ghost' onclick="document.getElementById('costeo-form').classList.add('hidden')">Cerrar</button></div>
     `;
+  },
+  exportAllSimple(){
+    const list=(Data.get(Data.col.insumos_costeo)||[]).slice();
+    if(!list.length){ alert('No hay insumos'); return; }
+    list.sort((a,b)=> String(a.nombre||'').localeCompare(String(b.nombre||''), 'es', {sensitivity:'base'}));
+    const provs=Data.get(Data.col.proveedores)||[];
+    const provMap=new Map(provs.map(p=>[p.id, p.nombre]));
+    const logoSrc=document.getElementById('app-logo')?.src||'';
+    const rows=list.map(it=>`
+      <tr>
+        <td>${it.nombre||''}</td>
+        <td>${provMap.get(it.proveedorId)||'—'}</td>
+        <td>${it.unidad||''}</td>
+        <td style="text-align:right">${fmt.money(Number(it.costoUnit||0))}</td>
+      </tr>
+    `).join('');
+    const styles=`
+      .insumos-root{font:12px system-ui;color:#111;padding:12px}
+      .insumos-header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+      .insumos-header img{width:48px;height:48px;border-radius:10px;object-fit:cover}
+      .insumos-header h1{margin:0;font-size:20px}
+      .insumos-header small{color:#555}
+      .insumos-meta{margin:6px 0;color:#555;font-size:11px}
+      .insumos-table{width:100%;border-collapse:collapse;margin-top:8px}
+      .insumos-table th,.insumos-table td{border:1px solid #ccc;padding:6px;text-align:left}
+      .insumos-table th{background:#f3f4f6}
+    `;
+    const bodyHtml=`<div class="insumos-root">
+      <div class="insumos-header">
+        ${logoSrc? `<img src="${logoSrc}" alt="logo">` : ''}
+        <div>
+          <h1>Insumos de costeo</h1>
+          <small>Listado operativo · ${localDateDMY(new Date())}</small>
+        </div>
+      </div>
+      <div class="insumos-meta">Total: ${list.length} insumos</div>
+      <table class="insumos-table">
+        <thead><tr><th>Insumo</th><th>Proveedor</th><th>Unidad</th><th style="text-align:right">Costo unit</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+    const filename=`Insumos_${todayISO()}.pdf`;
+    const popup=window.open('', '_blank');
+    if(popup){
+      popup.document.open();
+      popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${filename}</title>
+        <style>${styles}</style>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"><\/script>
+      </head><body>${bodyHtml}
+      <script>
+      (function(){
+        const run=()=>{
+          if(!window.html2pdf){ setTimeout(run, 150); return; }
+          const target=document.querySelector('.insumos-root');
+          const rect=target.getBoundingClientRect();
+          const width=Math.max(Math.ceil(rect.width), 794);
+          const height=Math.max(Math.ceil(rect.height), target.scrollHeight || 1);
+          window.html2pdf().set({
+            margin:8,
+            filename:${JSON.stringify(filename)},
+            image:{type:'jpeg',quality:0.98},
+            html2canvas:{scale:2,useCORS:true,backgroundColor:'#fff',windowWidth:width,windowHeight:height,scrollX:0,scrollY:0},
+            jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
+          }).from(target).save().then(()=>{ setTimeout(()=>window.close(), 300); }).catch(()=>{ window.print(); });
+        };
+        const ready=(document.fonts && document.fonts.ready)? document.fonts.ready: Promise.resolve();
+        ready.then(()=> setTimeout(run, 80));
+      })();
+      <\/script></body></html>`);
+      popup.document.close();
+      return;
+    }
+    const wrap=document.createElement('div');
+    wrap.style.position='absolute';
+    wrap.style.left='0';
+    wrap.style.top='0';
+    wrap.style.width='794px';
+    wrap.style.background='#fff';
+    wrap.style.color='#111';
+    wrap.style.opacity='1';
+    wrap.style.pointerEvents='none';
+    wrap.style.zIndex='9999';
+    wrap.style.overflow='visible';
+    wrap.setAttribute('aria-hidden','true');
+    wrap.innerHTML=`<style>${styles}</style>${bodyHtml}`;
+    document.body.appendChild(wrap);
+    if(window.html2pdf){
+      const runExport=()=>{
+        const rect=wrap.getBoundingClientRect();
+        const width=Math.max(Math.ceil(rect.width), 794);
+        const height=Math.max(Math.ceil(rect.height), wrap.scrollHeight || 1);
+        window.html2pdf().set({
+          margin:8,
+          filename,
+          image:{type:'jpeg',quality:0.98},
+          html2canvas:{scale:2,useCORS:true,backgroundColor:'#fff',windowWidth:width,windowHeight:height,scrollX:0,scrollY:0},
+          jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
+        }).from(wrap).save().then(()=> wrap.remove()).catch(()=>{ wrap.remove(); window.print(); });
+      };
+      const ready=(document.fonts && document.fonts.ready)? document.fonts.ready : Promise.resolve();
+      ready.then(()=> requestAnimationFrame(()=> setTimeout(runExport, 80)));
+    } else {
+      window.print();
+      wrap.remove();
+    }
   },
   duplicar(id){ const it=LocalDB.byId(Data.col.insumos_costeo,id); if(!it) return; const nombre=prompt('Nombre del duplicado', (it.nombre||'')+' (copy)')||((it.nombre||'')+' (copy)'); Data.add(Data.col.insumos_costeo,{...it,id:undefined,nombre}); notify('Insumo duplicado','success'); renderCostosInsumos(); recetasCalcularCosto(true); renderRecetas(); }
 };
