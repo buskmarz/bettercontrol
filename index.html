@@ -761,6 +761,7 @@ body.light-mode #panel-dashboard canvas{background:#FFFFFF;border:1px solid #e5e
       </div>
       <div class="toolbar recetas-toolbar">
         <button class="btn primary" onclick="recetas.nueva()">Nueva receta</button>
+        <button class="btn" onclick="recetas.exportAllSimple()">Exportar recetario</button>
       </div>
       <div class="recetas-tabs" id="recetas-tabs" role="tablist" aria-label="Secciones de recetas">
         <button class="btn ghost active" type="button" data-recetas-tab="resumen">Resumen</button>
@@ -3624,6 +3625,95 @@ const recetas={
     const list=Data.get(Data.col.recetas); if(!list.length){ alert('No hay recetas'); return; }
     const nombre=prompt('Nombre de la receta a exportar (PDF)', list[0].nombre)||list[0].nombre; const rec=list.find(r=> (r.nombre||'').toLowerCase()===String(nombre||'').toLowerCase()) || list[0];
     this.sharePDF(rec.id);
+  }
+  ,exportAllSimple(){
+    const list=Data.get(Data.col.recetas)||[];
+    if(!list.length){ alert('No hay recetas'); return; }
+    const ings=Data.get(Data.col.recetas_ingredientes)||[];
+    const byReceta=new Map();
+    ings.forEach(i=>{
+      if(!byReceta.has(i.recetaId)) byReceta.set(i.recetaId, []);
+      byReceta.get(i.recetaId).push(i);
+    });
+    const logoSrc=document.getElementById('app-logo')?.src||'';
+    const rows=list.map(r=>{
+      const metrics=calcRecetaMetrics(r);
+      const precioVenta=metrics.precioVenta || 0;
+      const precioSug=metrics.precioSug || 0;
+      const costo=metrics.costo || 0;
+      const margen=metrics.precio>0? `${fmt.num(metrics.margenReal,1)}%` : '--';
+      const ingredientes=(byReceta.get(r.id)||[]).map(i=>(
+        `<tr><td>${i.nombre||''}</td><td style="text-align:right">${Number(i.cantidad||0).toFixed(3)}</td><td>${i.unidad||''}</td></tr>`
+      )).join('') || `<tr><td colspan="3">Sin ingredientes</td></tr>`;
+      return `
+        <div class="recipe-card">
+          <div class="recipe-head">
+            <div>
+              <div class="recipe-title">${r.nombre||'Receta'}</div>
+              <div class="recipe-meta">${r.categoria||'Sin categoría'} · Porciones: ${r.porciones||1}${r.tiempoPrepMin? ` · ${r.tiempoPrepMin} min` : ''}</div>
+            </div>
+            <div class="recipe-prices">
+              <div><span>Precio venta</span><strong>${fmt.money(precioVenta)}</strong></div>
+              <div><span>Precio sugerido</span><strong>${fmt.money(precioSug)}</strong></div>
+              <div><span>Costo/porción</span><strong>${fmt.money(costo)}</strong></div>
+              <div><span>Margen real</span><strong>${margen}</strong></div>
+            </div>
+          </div>
+          <table class="recipe-table">
+            <thead><tr><th>Insumo</th><th>Cantidad</th><th>Unidad</th></tr></thead>
+            <tbody>${ingredientes}</tbody>
+          </table>
+        </div>
+      `;
+    }).join('');
+    const content=`<div class="recetario-root">
+      <style>
+        .recetario-root{font:12px system-ui;color:#111;padding:12px}
+        header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+        header img{width:48px;height:48px;border-radius:10px;object-fit:cover}
+        header h1{margin:0;font-size:20px}
+        header small{color:#555}
+        .recipe-card{border:1px solid #ddd;border-radius:10px;padding:10px;margin-bottom:10px}
+        .recipe-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+        .recipe-title{font-size:16px;font-weight:700}
+        .recipe-meta{color:#555;font-size:12px;margin-top:4px}
+        .recipe-prices{display:grid;grid-template-columns:repeat(2,minmax(140px,1fr));gap:6px}
+        .recipe-prices span{display:block;color:#666;font-size:11px}
+        .recipe-prices strong{font-size:13px}
+        .recipe-table{width:100%;border-collapse:collapse;margin-top:8px}
+        .recipe-table th,.recipe-table td{border:1px solid #ccc;padding:6px;text-align:left}
+        .recipe-table th{background:#f3f4f6}
+      </style>
+      <header>
+        ${logoSrc? `<img src="${logoSrc}" alt="logo">` : ''}
+        <div>
+          <h1>Recetario operativo</h1>
+          <small>Version para baristas y chef · ${localDateDMY(new Date())}</small>
+        </div>
+      </header>
+      ${rows}
+    </div>`;
+    const wrap=document.createElement('div');
+    wrap.style.position='fixed';
+    wrap.style.left='-10000px';
+    wrap.style.top='0';
+    wrap.innerHTML=content;
+    document.body.appendChild(wrap);
+    const filename=`Recetario_${todayISO()}.pdf`;
+    if(window.html2pdf){
+      window.html2pdf().set({
+        margin:8,
+        filename,
+        image:{type:'jpeg',quality:0.98},
+        html2canvas:{scale:2},
+        jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
+      }).from(wrap).save().then(()=> wrap.remove()).catch(()=> wrap.remove());
+    } else {
+      const w=window.open('about:blank','_blank');
+      w.document.write(`<!doctype html><title>${filename}</title><body>${content}<script>setTimeout(()=>window.print(),150)<\/script></body>`);
+      w.document.close();
+      wrap.remove();
+    }
   }
 };
 
