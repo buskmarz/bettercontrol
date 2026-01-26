@@ -3669,10 +3669,10 @@ const recetas={
     const content=`<div class="recetario-root">
       <style>
         .recetario-root{font:12px system-ui;color:#111;padding:12px}
-        header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-        header img{width:48px;height:48px;border-radius:10px;object-fit:cover}
-        header h1{margin:0;font-size:20px}
-        header small{color:#555}
+        .recetario-header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+        .recetario-header img{width:48px;height:48px;border-radius:10px;object-fit:cover}
+        .recetario-header h1{margin:0;font-size:20px}
+        .recetario-header small{color:#555}
         .recipe-card{border:1px solid #ddd;border-radius:10px;padding:10px;margin-bottom:10px}
         .recipe-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
         .recipe-title{font-size:16px;font-weight:700}
@@ -3684,25 +3684,26 @@ const recetas={
         .recipe-table th,.recipe-table td{border:1px solid #ccc;padding:6px;text-align:left}
         .recipe-table th{background:#f3f4f6}
       </style>
-      <header>
+      <div class="recetario-header">
         ${logoSrc? `<img src="${logoSrc}" alt="logo">` : ''}
         <div>
           <h1>Recetario operativo</h1>
           <small>Version para baristas y chef · ${localDateDMY(new Date())}</small>
         </div>
-      </header>
+      </div>
       ${rows}
     </div>`;
     const wrap=document.createElement('div');
     wrap.style.position='fixed';
-    wrap.style.left='0';
+    wrap.style.left='-10000px';
     wrap.style.top='0';
     wrap.style.width='794px';
     wrap.style.background='#fff';
     wrap.style.color='#111';
-    wrap.style.opacity='0';
+    wrap.style.opacity='1';
     wrap.style.pointerEvents='none';
-    wrap.style.zIndex='-1';
+    wrap.style.zIndex='0';
+    wrap.setAttribute('aria-hidden','true');
     wrap.innerHTML=content;
     document.body.appendChild(wrap);
     const filename=`Recetario_${todayISO()}.pdf`;
@@ -3713,7 +3714,7 @@ const recetas={
             margin:8,
             filename,
             image:{type:'jpeg',quality:0.98},
-            html2canvas:{scale:2,useCORS:true},
+            html2canvas:{scale:2,useCORS:true,backgroundColor:'#fff',windowWidth:wrap.scrollWidth,windowHeight:wrap.scrollHeight},
             jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}
           }).from(wrap).save().then(()=> wrap.remove()).catch(()=> wrap.remove());
         }, 60);
